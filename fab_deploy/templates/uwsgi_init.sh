@@ -52,7 +52,7 @@ case "$1" in
        ;;
   restart)
         echo -n "Restarting $DESC: "
-        start-stop-daemon --signal 3 --quiet --retry 2 --stop \
+        start-stop-daemon -o --signal 3 --quiet --retry 2 --stop \
                 --exec $DAEMON
         sleep 1
         start-stop-daemon --user $OWNER --start --quiet --chuid $OWNER:$OWNER \

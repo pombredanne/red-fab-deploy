@@ -49,6 +49,7 @@ def uwsgi_setup(stage=''):
 	fabric.api.sudo('mkdir -p /var/log/uwsgi')
 	fabric.api.sudo('touch /var/log/uwsgi/errors.log')
 	fabric.api.sudo('chmod -R a+w /var/log/uwsgi')
+	fabric.api.sudo('update-rc.d -f uwsgi defaults')
 
 def uwsgi_service(command):
 	""" Run a uWSGI service """

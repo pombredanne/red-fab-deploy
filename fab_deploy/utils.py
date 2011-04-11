@@ -196,3 +196,9 @@ def append(filename, text, use_sudo=False, partial=True, escape=True):
         	continue
         line = line.replace('"', r'\"') if escape else line
         func('echo "%s" >> %s' % (line, filename))
+
+def sudo_put(file, loc):
+	tmploc = '/home/ubuntu/%s' % os.path.split(file)[1]
+	fabric.api.put(file, tmploc)
+	fabric.api.sudo('mv %s %s' % (tmploc, loc))
+	fabric.api.sudo('chown root:root %s' % loc)
