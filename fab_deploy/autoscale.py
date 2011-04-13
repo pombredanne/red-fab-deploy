@@ -28,6 +28,10 @@ import re
 import sys
 
 # EC2 Utility Methods
+def ec2_instances():
+    ec2 = ec2_connection()
+    return [r.instances[0] for r in ec2.get_all_instances()]
+
 def ec2_location():
     return get_provider_dict()['location'][:-1]
 
@@ -109,40 +113,56 @@ def put_file(from_path, to_path):
 
 # Finding other servers
 
+def _find_servers(stage, autoscale_name=None):
+    ec2 = ec2_connection()
+    config = get_provider_dict()
+    servers = []
+    for name, options in config['autoscale'][stage].iteritems():
+        if autoscale_name is not None and autoscale_name != name:
+            continue
+        for server in ec2_instances():
+            if server.tags.get('Stage') == unicode(stage) or server.image_id == options.get('image'):
+                servers.append(server)
+    return servers
+
+def _set_hosts(hosts):
+    fabric.api.env.hosts = ['ubuntu@%s' % host if isinstance(host, string) else host.public_dns_name for host in hosts]
+        
 def autoscaling_servers(stage=None):
-    ''' To be run on db_server startup.  Finds all webservers. '''
     
     if stage is None:
         stage = ec2_userdata()['stage']
         
-    config = get_provider_dict()
-    ec2 = ec2_connection()
-    fabric.api.env.hosts = []
-    for name, options in config['autoscale'][stage].iteritems():
-
-        webservers = [server.instances[0] for server in ec2.get_all_instances() 
-                      if (server.instances[0].tags.get('Stage') == unicode(stage))
-                          or (server.instances[0].image_id == options.get('image'))]
-        fabric.api.env.hosts.extend('ubuntu@%s' % ws.public_dns_name for ws in webservers)
-    
+    _set_hosts(_find_servers(stage))
     
 def autoscaling_webservers(stage=None, autoscale_name=None):
-    ''' To be run on db_server startup.  Finds all webservers. '''
-    
     if stage is None:
         stage = ec2_userdata()['stage']
+        
+    if autoscale_name is None:
+        autoscale_name, node_type = run('hostname').rsplit('-', 1)
+
+    _set_hosts(_find_servers(stage, autoscale_name))
+
+def oldest_other_webserver(stage=None, autoscale_name=None):
+    
+    ''' To be run on web server startup.  Finds oldest other webserver (including dev template) '''
+
+    if stage is None:
+        stage = ec2_userdata()['stage']
+        
     if autoscale_name is None:
         autoscale_name, node_type = run('hostname').rsplit('-', 1)
         
-    config = get_provider_dict()
-    options = config['autoscale'][stage][autoscale_name]
-
-    ec2 = ec2_connection()
-    webservers = [server.instances[0] for server in ec2.get_all_instances() 
-                  if (server.instances[0].tags.get('Server Type') == u'web' and server.instances[0].tags.get('Stage') == unicode(stage))
-                      or (server.instances[0].image_id == options.get('image'))]
-    fabric.api.env.hosts = ['ubuntu@%s' % ws.public_dns_name for ws in webservers]
-    
+    try:
+        my_id = fabric.api.local('curl --connect-timeout 5 http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
+    except:
+        my_id = None
+        
+    servers = [server for servers in _find_servers(stage, autoscale_name) if server.id != my_id]
+    servers.sort(key = lambda w: w.launch_time)
+    _set_hosts([servers[0]])
+  
 def register_db_server(host):
     
     ''' Register self with (web)servers '''
@@ -162,35 +182,6 @@ def register_db_server(host):
     sudo('service pgpool2 reload')
     
     
-def oldest_other_webserver(stage=None, autoscale_name=None):
-    
-    ''' To be run on web server startup.  Finds oldest other webserver (including dev template) '''
-
-    if stage is None:
-        stage = ec2_userdata()['stage']
-    if autoscale_name is None:
-        autoscale_name, node_type = run('hostname').rsplit('-', 1)
-    config = get_provider_dict()
-    options = config['autoscale'][stage][autoscale_name]
-
-    try:
-        fabric.api.local('curl --connect-timeout 5 http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
-    except:
-        my_id = None
-    ec2 = ec2_connection()
-    
-    webservers = [server.instances[0] for server in ec2.get_all_instances() 
-                  if server.instances[0].id != my_id and 
-                        ((server.instances[0].tags.get('Server Type') == u'web' and server.instances[0].tags.get('Stage') == unicode(stage))
-                         or (server.instances[0].image_id == options.get('image')))]
-
-    webservers.sort(key = lambda w: w.launch_time)
-
-   # while webservers:
-    oldest = webservers.pop(0)
-        #if fabric.api.local('curl --connect-timeout 5 %s >> /dev/null' % oldest.public_dns_name):
-        #    break
-    fabric.api.env.hosts = ['ubuntu@%s' % oldest.public_dns_name]
     
 def steal_config_file(filename):
     localfile = open(filename, 'w')
@@ -379,6 +370,7 @@ def _go_setup_autoscale(stage = None):
     try:
         fabric.api.put(os.path.join(fabric.api.env.conf['FILES'], 'rc.local.%s.sh' % data['server_type']),
                        '/etc/rc.local', use_sudo=True)
+        fabric.api.sudo('chmod 755 /etc/rc.local')
     except ValueError:
         fabric.api.warn(fabric.colors.yellow('No rc.local file found for server type %s' % data['server_type']))
     
@@ -391,7 +383,7 @@ def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
 
     data = ec2_userdata()
 
-    deploy_project(tagname, force=force, use_existing=use_existing, with_virtualenv = data['server_type'] != 'db')
+    deploy_project(tagname, force=force, use_existing=use_existing, with_full_virtualenv = data['server_type'] != 'db')
 
     make_active(tagname)
  
@@ -630,8 +622,9 @@ def go_launch_autoscale(stage = None, force=False, ignore=False):
 
 def update_fab_deploy(fabfile=None):
     with fabric.api.cd('/srv/active/'):
+        fabric.api.run('ls env || virtualenv env')
         with virtualenv():
-            fabric.api.sudo('pip install -e -e git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
+            fabric.api.run('pip install -e git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
     if fabfile:
         fabric.api.put(fabfile, '/srv/active/fabfile.py')
         

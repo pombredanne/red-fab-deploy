@@ -127,7 +127,7 @@ def deploy_full(tagname, force=False):
 	deploy_project(tagname,force=force)
 	make_active(tagname)
 
-def deploy_project(tagname, force=False, use_existing=False, with_virtualenv=True):
+def deploy_project(tagname, force=False, use_existing=False, with_full_virtualenv=True):
 	""" Deploys project on prepared server. """
 	make_src_dir()
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
@@ -150,11 +150,10 @@ def deploy_project(tagname, force=False, use_existing=False, with_virtualenv=Tru
 				extra_opts='--links')
 			fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
 
-		if with_virtualenv:
-			with fabric.api.cd(tag_dir):
-				virtualenv_create()
+		with fabric.api.cd(tag_dir):
+			virtualenv_create()
 
-	if with_virtualenv:
+	if with_full_virtualenv:
 		with fabric.api.cd(tag_dir):
 			with virtualenv():
 				pip_install()
