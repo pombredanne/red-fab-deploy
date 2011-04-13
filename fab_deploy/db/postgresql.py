@@ -174,7 +174,7 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 	fabric.api.put(os.path.join(fabric.api.env.conf['FILES'], 'pgpool.conf'), '/etc/pgpool.conf', use_sudo=True)
 	
 	# Add user for health check
-	append('/etc/pool_passwd', 'pgpool:%s' % fabric.api.run('pg_md5 %s' % options['password']), True)
+	append('/etc/pcp.conf', 'pgpool:%s' % fabric.api.run('pg_md5 %s' % options['password']), True)
 	
 	# Service script
 	service_script = '/etc/init.d/pgpool'
