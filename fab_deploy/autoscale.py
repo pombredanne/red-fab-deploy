@@ -50,7 +50,7 @@ def _find_servers(stage, autoscale_name=None):
             if (stage == str(server.tags.get('Stage')) and (autoscale_type is None or autoscale_type == str(server.tags.get('Server Type'))))\
                 or server.image_id == options.get('image'):
                 servers.append(server)
-    return servers
+    return servers 
 
 def set_hosts(hosts):
     fabric.api.env.hosts = []
@@ -172,8 +172,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
         pass
     
     # Kill the old server
-    conn = AutoScaleConnection(fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'],
-                               region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
+    conn = AutoScaleConnection(**aws_connection_opts())
     
     instance = ec2_instance_with(lambda i: i.public_dns_name == old_host_name)
     conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)
@@ -283,6 +282,7 @@ def _go_setup_autoscale(stage = None):
         pgpool_set_hosts(ec2_instance(dbnodes['master']).public_dns_name, ec2_instance(dbnodes['template']).public_dns_name)
     
     package_install('fabric')
+    fabric.api.sudo('pip install git+http://github.com/apache/libcloud.git#egg=apache-libcloud') #HACK
 #    grab_from_web('http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip')
 #    grab_from_web('http://ec2-downloads.s3.amazonaws.com/CloudWatch-2010-08-01.zip')
 #    append('/home/ubuntu/.bashrc', 'export PATH=$PATH:/home/ubuntu/AutoScaling-2010-08-01/bin/:/home/ubuntu/CloudWatch-2010-08-01/bin/')
@@ -544,6 +544,7 @@ def update_fab_deploy(fabfile=None):
     with fabric.api.cd('/srv/active/'):
         fabric.api.run('ls env || virtualenv env')
         with virtualenv():
+            fabric.api.run('pip install -e git+http://github.com/apache/libcloud.git#egg=apache-libcloud')
             fabric.api.run('pip install -e git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
     if fabfile:
         fabric.api.put(fabfile, '/srv/active/fabfile.py')
