@@ -544,7 +544,6 @@ def update_fab_deploy(fabfile=None):
     with fabric.api.cd('/srv/active/'):
         fabric.api.run('ls env || virtualenv env')
         with virtualenv():
-            fabric.api.run('pip install -e git+http://github.com/apache/libcloud.git#egg=apache-libcloud')
             fabric.api.run('pip install -e git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
     if fabfile:
         fabric.api.put(fabfile, '/srv/active/fabfile.py')
