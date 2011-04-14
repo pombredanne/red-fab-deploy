@@ -40,7 +40,7 @@ case "$1" in
         echo "Done."
         ;;
   reload)
-        killall -1 $DAEMON
+        $DAEMON $DAEMON_OPTS reload
         ;;
   force-reload)
         killall -15 $DAEMON

@@ -189,14 +189,10 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 	#fabric.api.sudo('pgpool -c -f /etc/pgpool.conf')
 	fabric.api.sudo('service pgpool restart')
 
-def pgpool_set_hosts(initial_master, *initial_slaves):
-	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)
-	append('/etc/pgpool.conf', ['backend_hostname0 = %s' % initial_master,
-								'backend_port0 = 5432',
-								'backend_weight0 = 1'], use_sudo=True)
-	
-	for i, slave in enumerate(initial_slaves):
-		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i+1, slave),
+def pgpool_set_hosts(*hosts):
+	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)	
+	for i, slave in enumerate(*hosts):
+		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave),
 									'backend_port%d = 5432' % i,
 									'backend_weight%d = 1' % i], use_sudo=True)
 		

@@ -5,6 +5,7 @@ from boto.ec2.autoscale import AutoScaleConnection, AutoScalingGroup, LaunchConf
 from boto.ec2.elb import ELBConnection, HealthCheck
 from boto.exception import BotoServerError
 from boto.regioninfo import RegionInfo
+from fab_deploy.aws import *
 from fab_deploy.db.postgresql import *
 from fab_deploy.deploy import *
 from fab_deploy.machine import *
@@ -27,86 +28,15 @@ import os
 import re
 import sys
 
-# EC2 Utility Methods
-def ec2_instances():
-    ec2 = ec2_connection()
-    return [r.instances[0] for r in ec2.get_all_instances()]
-
-def ec2_location():
-    return get_provider_dict()['location'][:-1]
-
-def ec2_userdata():
+def get_data(local = False):
     return {'stage': fabric.api.sudo('cat /etc/red_fab_deploy_stage'),
-            'server_type': fabric.api.sudo('cat /etc/red_fab_deploy_server_type')}
+            'server_type': fabric.api.sudo('cat /etc/red_fab_deploy_server_type'),
+            'autoscale_name': fabric.api.sudo('cat /etc/red_fab_deploy_autoscale_name')}
 
-def ec2_set_data(data):
+def set_data(data):
     fabric.api.sudo('echo "%s" > /etc/red_fab_deploy_stage' % data['stage'])
     fabric.api.sudo('echo "%s" > /etc/red_fab_deploy_server_type' % data['server_type'])
-    
-def ec2_region(endpoint):
-    return RegionInfo(name='Region', endpoint=endpoint)
-
-def ec2_connection():
-    ec2 = boto.ec2.connect_to_region(ec2_location(),
-                        aws_access_key_id = fabric.api.env.conf['AWS_ACCESS_KEY_ID'],
-                        aws_secret_access_key = fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'])
-    return ec2
-
-def ec2_instance(id):
-    ec2 = ec2_connection()
-    return ec2.get_all_instances([id])[0].instances[0]
-
-def ec2_instance_with(func):
-    ec2 = ec2_connection()
-    return [r.instances[0] for r in ec2.get_all_instances if func(r.instances[0])][0]
-
-def get_machine(stage, node_name):
-    config = get_provider_dict()
-    return config[stage][node_name]
-
-def create_bucket_if_needed(name):
-    from boto.s3.connection import S3Connection
-    s3 = S3Connection(fabric.api.env.conf['AWS_ACCESS_KEY_ID'],
-                      fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'])
-    if not any(r for r in s3.get_all_buckets() if str(r.name) == str(name)):
-        s3.create_bucket(name, location=ec2_location())
-
-def save_as_ami(name, deregister = None):
-    config = get_provider_dict()
-    arch = 'i386' if re.search('i\d86', fabric.api.run('uname -m')) else 'x86_64'
-    # Copy pk and cert to /tmp, somehow
-    fabric.api.put(fabric.api.env.conf['AWS_X509_PRIVATE_KEY'], '/tmp/pk.pem')
-    fabric.api.put(fabric.api.env.conf['AWS_X509_CERTIFICATE'], '/tmp/cert.pem')
-    
-    fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True)
-    package_update()
-    package_install('ec2-ami-tools', 'ec2-api-tools')
-    
-    if deregister:
-        with fabric.api.settings(warn_only=True):
-            fabric.api.sudo('ec2-deregister -C /tmp/cert.pem -K /tmp/pk.pem --region %s %s' % (ec2_location(), deregister))
-    
-    fabric.api.sudo('rm -rf /tmp/%s*' % name)
-    fabric.api.sudo('ec2-bundle-vol -c /tmp/cert.pem -k /tmp/pk.pem -u %s -s 10240 -r %s -p %s'\
-                     % (fabric.api.env.conf['AWS_ID'], arch, name))
-    fabric.api.sudo('ec2-upload-bundle -b %s -m /tmp/%s.manifest.xml -a %s -s %s --location %s'\
-                     % (fabric.api.env.conf['AWS_AMI_BUCKET'], name,
-                        fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], ec2_location()))
-    result = fabric.api.sudo('ec2-register -C /tmp/cert.pem -K /tmp/pk.pem --region %s %s/%s.manifest.xml -n %s'\
-                             % (ec2_location(), fabric.api.env.conf['AWS_AMI_BUCKET'], name, name))
-    fabric.api.run('rm /tmp/pk.pem')
-    fabric.api.run('rm /tmp/cert.pem')
-    
-    ami = result.split()[1]
-    return ami
-        
-def create_elastic_ip(stage, node_name):
-    ec2 = ec2_connection()
-    
-    address = ec2.allocate_address()
-    ec2.associate_address(get_machine(stage, node_name)['id'], address)
-    
-    return 'ec2-%s.%s.compute.amazonaws.com' % (address.replace('.', '-'), ec2_location())
+    fabric.api.sudo('echo "%s" > /etc/red_fab_deploy_autoscale_name' % data['autoscale_name'])
 
 def put_file(from_path, to_path):
     fabric.api.put(from_path, to_path)
@@ -116,78 +46,85 @@ def put_file(from_path, to_path):
 def _find_servers(stage, autoscale_name=None):
     ec2 = ec2_connection()
     config = get_provider_dict()
+    
+    if autoscale_name:
+        options = config['autoscale'][data][stage][autoscale_name]
+        autoscale_type = options['server-type']
+    else:
+        autoscale_type = None
+        
     servers = []
     for name, options in config['autoscale'][stage].iteritems():
         if autoscale_name is not None and autoscale_name != name:
             continue
         for server in ec2_instances():
-            if server.tags.get('Stage') == unicode(stage) or server.image_id == options.get('image'):
+            if (stage == str(server.tags.get('Stage')) and (autoscale_type is None or autoscale_type == str(server.tags.get('Server Type'))))\
+                or server.image_id == options.get('image'):
                 servers.append(server)
     return servers
 
 def _set_hosts(hosts):
-    fabric.api.env.hosts = ['ubuntu@%s' % host if isinstance(host, string) else host.public_dns_name for host in hosts]
+    fabric.api.env.hosts = []
+    for host in hosts:
+        if isinstance(host, string) and host.startswith('i-'):
+            host = ec2_instance(host)
+        if not isinstance(host, string):
+            host = host.public_dns_name
+        fabric.api.env.hosts.append('ubuntu@%s' % host)
         
-def autoscaling_servers(stage=None):
+def autoscaling_servers(stage=None, autoscale_name=None):
+    if stage and autoscale_name: # For debugging
+        data = {'stage': stage, 'autoscale_name': autoscale_name}
+    else:
+        data = get_data()
+        
+    _set_hosts(_find_servers(data['stage'], data['autoscale_name']))
     
-    if stage is None:
-        stage = ec2_userdata()['stage']
+def autoscaling_web_servers(stage = None, autoscale_name = None):
         
-    _set_hosts(_find_servers(stage))
+    if stage and autoscale_name: # For debugging
+        data = {'stage': stage, 'autoscale_name': autoscale_name}
+    else:
+        data = get_data()
     
-def autoscaling_webservers(stage=None, autoscale_name=None):
-    if stage is None:
-        stage = ec2_userdata()['stage']
-        
-    if autoscale_name is None:
-        autoscale_name, node_type = run('hostname').rsplit('-', 1)
+    config = get_provider_dict()
+    my_options = config['autoscale'][data['stage']][data['autoscale_name']]
+    if my_options['server-type'] == 'web':
+        pass
+    elif my_options['web-autoscale']:
+        data['autoscale_name'] = my_options['web-autoscale']
+    else:
+        raise Exception('Cound not find web autoscale cluster')
+    
+    servers = [server for server in _find_servers(data['stage'], data['autoscale_name']) if str(server.status) == 'running']
+    
+    # We now have all of the web servers...
+    _set_hosts(servers)
 
-    _set_hosts(_find_servers(stage, autoscale_name))
+def localhost():
+    _set_hosts(['localhost'])
 
-def oldest_other_webserver(stage=None, autoscale_name=None):
-    
-    ''' To be run on web server startup.  Finds oldest other webserver (including dev template) '''
-
-    if stage is None:
-        stage = ec2_userdata()['stage']
-        
-    if autoscale_name is None:
-        autoscale_name, node_type = run('hostname').rsplit('-', 1)
-        
-    try:
-        my_id = fabric.api.local('curl --connect-timeout 5 http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
-    except:
-        my_id = None
-        
-    servers = [server for servers in _find_servers(stage, autoscale_name) if server.id != my_id]
-    servers.sort(key = lambda w: w.launch_time)
-    _set_hosts([servers[0]])
-  
-def register_db_server(host):
-    
-    ''' Register self with (web)servers '''
-        
-    i = 0
-    while True:
-        if not fabric.contrib.files.contains('/etc/pgpool.conf', 'backend_hostname%d' % i):
-            break
-        i += 1
-    
-    append('/etc/pg_pool.conf', [
-        'backend_hostname%d = %s' % (i, host),
-        'backend_port%d = 5432' % i,
-        'backend_weight%d = 1' % i
-    ])
-    
-    sudo('service pgpool2 reload')
+def update_db_servers(stage = None, autoscale_name = None):
     
     
+    if stage and autoscale_name: # For debugging
+        data = {'stage': stage, 'autoscale_name': autoscale_name}
+    else:
+        data = get_data()
     
-def steal_config_file(filename):
-    localfile = open(filename, 'w')
-    content = sudo('cat %s' % filename)
-    localfile.write(content)
-    localfile.close()
+    config = get_provider_dict()
+    my_options = config['autoscale'][data['stage']][data['autoscale_name']]
+    if my_options['server-type'] == 'db':
+        pass
+    elif my_options['db-autoscale']:
+        data['autoscale_name'] = my_options['db-autoscale']
+    else:
+        raise Exception('Cound not find db autoscale cluster')
+    
+    servers = [server for server in _find_servers(data['stage'], data['autoscale_name']) if str(server.status) == 'running']
+    
+    # We now have all of the db servers...
+    pgpool_set_hosts(*servers)
     
 def sync_data():
     ''' Sync postgres data from master to self (slave) '''
@@ -198,26 +135,27 @@ def sync_data():
     fabric.api.local('''scp -ri %s ubuntu@%s:/data/* /data/''' % (fabric.api.env.key_filename[0], master))
     fabric.api.local('chown -R postgres:postgres /data')
     
-def original_db_master():
+def original_master(stage=None, autoscale_name=None):
     ''' Run on webserver to find original master (to stop if needed) '''
-    ec2 = ec2_connection()
-    my_id = run('curl http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
-    autoscale_name, node_type = run('hostname').rsplit('-', 1)
-    data = ec2_userdata()
+
+    if stage and autoscale_name: # For debugging
+        data = {'stage': stage, 'autoscale_name': autoscale_name}
+    else:
+        data = get_data()
+    
     config = get_provider_dict()
+    options = config['autoscale'][data['stage']][data['autoscale_name']]
+    master_id = options['nodes'].get('master')
     
-    if data['server_type'] != 'db':
-        return
+    try:
+        master = ec2_instance(master_id)
+        if str(master.state) == 'running':
+            _set_hosts([master])
+        else:
+            _set_hosts([])
+    except:
+        _set_hosts([])
     
-    original_master = config[data['stage'][autoscale_name]['nodes']['master']]
-    
-    pgconfig = open('/etc/pgpool.conf').read()
-    match = re.search('backend_hostname0\s*=\s*(\w-.)', pgconfig)
-    current_master = match.group(1)
-
-    if original_master == current_master:
-        set_host(original_master)
-
 def set_host(host):
     fabric.api.env.hosts = ['ubuntu@%s' % host]
     
@@ -227,7 +165,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ec2 = ec2_connection()
     my_id = run('curl http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
     autoscale_name, node_type = run('hostname').rsplit('-', 1)
-    data = ec2_userdata()
+    data = get_data()
 
     config = get_provider_dict()
     settings = config['autoscale'][data['stage']]
@@ -240,7 +178,8 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
         
         # Give master ip address
         ec2.associate_address(my_id, settings['static-ip'])
-        fabric.api.local('pcp_attach_node 10 127.0.0.1 9898 pgpool %s 0' % settings['services']['postgresql']['password'])
+        fabric.api.sudo('service pgpool reload')
+        #fabric.api.local('pcp_attach_node 10 127.0.0.1 9898 pgpool %s 0' % settings['services']['postgresql']['password'])
         
     else:
         # We broke the slave!
@@ -252,10 +191,6 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
     
     instance = ec2_instance_with(lambda i: i.public_dns_name == old_host_name)
     conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)
-
-def reload_pgpool_master():
-    # Reload node 0, the master
-    fabric.api.sudo('pcp_attach_node 10 127.0.0.1 9898 pgpool %s 0' % settings['services']['postgresql']['password'])
 
 def go_prepare_autoscale(stage='development'):
     ec2_authorize_port('default','tcp','22')
@@ -344,10 +279,10 @@ def _go_setup_autoscale(stage = None):
     tags = ec2_instance(my_id).tags
     autoscale_name, node_type = tags[u'Name'].rsplit('-', 1)
     options = config['autoscale'][stage][autoscale_name]
-    data = {'stage': stage, 'server_type': options['server-type']}
+    data = {'stage': stage, 'server_type': options['server-type'], 'autoscale_name': autoscale_name}
 
     set_hostname(tags[u'Name'])
-    ec2_set_data(data)
+    set_data(data)
     
     master = None
     if node_type == 'template' and 'postgresql' in options['services']:
@@ -359,7 +294,7 @@ def _go_setup_autoscale(stage = None):
     install_services(my_id, tags[u'Name'], address, stage, options, replication=True, master=master)
 
     if 'pgpool' in options['services']:
-        dbnodes = config['autoscale'][stage][options['services']['pgpool']['db_cluster']]['nodes']
+        dbnodes = config['autoscale'][stage][options['db-autoscale']]['nodes']
         pgpool_set_hosts(ec2_instance(dbnodes['master']).public_dns_name, ec2_instance(dbnodes['template']).public_dns_name)
     
     package_install('fabric')
@@ -381,7 +316,7 @@ def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     if not stage:
         fabric.api.error(fabric.colors.red('No stage provided'))
 
-    data = ec2_userdata()
+    data = get_data()
 
     deploy_project(tagname, force=force, use_existing=use_existing, with_full_virtualenv = data['server_type'] != 'db')
 

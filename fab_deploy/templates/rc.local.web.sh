@@ -2,5 +2,5 @@
 
 source /srv/active/env/bin/activate
 # Get all db hosts properly
-fab -f /srv/active/fabfile.py oldest_other_webserver steal_config_file:/etc/pgpool.conf
+fab -f /srv/active/fabfile.py localhost update_db_servers
 service pgpool2 restart
