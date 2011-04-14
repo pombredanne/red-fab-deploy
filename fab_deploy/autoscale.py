@@ -4,7 +4,7 @@ from boto.ec2.autoscale import AutoScaleConnection, AutoScalingGroup, LaunchConf
 #from boto.ec2.cloudwatch.alarm import MetricAlarm
 from boto.ec2.elb import ELBConnection, HealthCheck
 from boto.exception import BotoServerError
-from boto.regioninfo import RegionInfo
+#from boto.regioninfo import RegionInfo
 from fab_deploy.aws import *
 from fab_deploy.db.postgresql import *
 from fab_deploy.deploy import *
@@ -12,23 +12,13 @@ from fab_deploy.machine import *
 from fab_deploy.package import *
 from fab_deploy.system import *
 from fab_deploy.utils import *
-from libcloud.compute.base import NodeImage, NodeLocation, NodeSize
-from libcloud.compute.providers import get_driver
-from libcloud.compute.types import Provider
-from pprint import pprint
-from subprocess import Popen
+from fab_deploy.virtualenv import *
 from time import sleep
-import boto
-import boto.ec2
 import fabric.api
 import fabric.colors
-import fabric.contrib
-import libcloud.security
 import os
-import re
-import sys
 
-def get_data(local = False):
+def get_data():
     return {'stage': fabric.api.sudo('cat /etc/red_fab_deploy_stage'),
             'server_type': fabric.api.sudo('cat /etc/red_fab_deploy_server_type'),
             'autoscale_name': fabric.api.sudo('cat /etc/red_fab_deploy_autoscale_name')}
@@ -41,14 +31,13 @@ def set_data(data):
 def put_file(from_path, to_path):
     fabric.api.put(from_path, to_path)
 
-# Finding other servers
+# Finding other servers 
 
 def _find_servers(stage, autoscale_name=None):
-    ec2 = ec2_connection()
     config = get_provider_dict()
     
     if autoscale_name:
-        options = config['autoscale'][data][stage][autoscale_name]
+        options = config['autoscale'][stage][autoscale_name]
         autoscale_type = options['server-type']
     else:
         autoscale_type = None
@@ -63,22 +52,22 @@ def _find_servers(stage, autoscale_name=None):
                 servers.append(server)
     return servers
 
-def _set_hosts(hosts):
+def set_hosts(hosts):
     fabric.api.env.hosts = []
     for host in hosts:
-        if isinstance(host, string) and host.startswith('i-'):
+        if isinstance(host, str) and host.startswith('i-'):
             host = ec2_instance(host)
-        if not isinstance(host, string):
+        if not isinstance(host, str):
             host = host.public_dns_name
         fabric.api.env.hosts.append('ubuntu@%s' % host)
         
 def autoscaling_servers(stage=None, autoscale_name=None):
-    if stage and autoscale_name: # For debugging
+    if stage: # For debugging
         data = {'stage': stage, 'autoscale_name': autoscale_name}
     else:
         data = get_data()
         
-    _set_hosts(_find_servers(data['stage'], data['autoscale_name']))
+    set_hosts(_find_servers(data['stage'], data['autoscale_name']))
     
 def autoscaling_web_servers(stage = None, autoscale_name = None):
         
@@ -99,10 +88,10 @@ def autoscaling_web_servers(stage = None, autoscale_name = None):
     servers = [server for server in _find_servers(data['stage'], data['autoscale_name']) if str(server.status) == 'running']
     
     # We now have all of the web servers...
-    _set_hosts(servers)
+    set_hosts(servers)
 
 def localhost():
-    _set_hosts(['localhost'])
+    set_hosts(['localhost'])
 
 def update_db_servers(stage = None, autoscale_name = None):
     
@@ -150,21 +139,18 @@ def original_master(stage=None, autoscale_name=None):
     try:
         master = ec2_instance(master_id)
         if str(master.state) == 'running':
-            _set_hosts([master])
+            set_hosts([master])
         else:
-            _set_hosts([])
+            set_hosts([])
     except:
-        _set_hosts([])
-    
-def set_host(host):
-    fabric.api.env.hosts = ['ubuntu@%s' % host]
+        set_hosts([])
     
 def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ''' Runs on web host (local) when failover occurs.  Accesses new master db host (run/sudo)'''
     
     ec2 = ec2_connection()
-    my_id = run('curl http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
-    autoscale_name, node_type = run('hostname').rsplit('-', 1)
+    my_id = fabric.api.run('curl http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
+    autoscale_name, node_type = fabric.api.run('hostname').rsplit('-', 1)
     data = get_data()
 
     config = get_provider_dict()
@@ -174,7 +160,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
     if old_node_id == old_master_id:
         # We broke the master!
         # Touch failover file to make master
-        sudo('touch /data/failover')
+        fabric.api.sudo('touch /data/failover')
         
         # Give master ip address
         ec2.associate_address(my_id, settings['static-ip'])
@@ -239,7 +225,6 @@ def go_prepare_autoscale(stage='development'):
   
 def autoscale_template_nodes(stage = 'development', server_type=None):
     fabric.api.env.conf['stage'] = stage
-    ec2 = ec2_connection()
     config = get_provider_dict()
     fabric.api.env.hosts = []
     for name, values in config.get('autoscale', {}).get(stage, {}).iteritems():
@@ -268,7 +253,7 @@ def go_setup_autoscale(stage = None):
 def _go_setup_autoscale(stage = None):
     stage = stage or fabric.api.env.conf['stage']
     if not stage:
-        fabric.api.error(fabric.colors.red('No stage provided'))
+        raise Exception(fabric.colors.red('No stage provided'))
 
     # Now we're on the node
     config = get_provider_dict()
@@ -314,7 +299,7 @@ def _go_setup_autoscale(stage = None):
 def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     stage = stage or fabric.api.env.conf['stage']
     if not stage:
-        fabric.api.error(fabric.colors.red('No stage provided'))
+        raise Exception(fabric.colors.red('No stage provided'))
 
     data = get_data()
 
@@ -330,7 +315,7 @@ def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
 def go_save_templates(stage = None):
     stage = stage or fabric.api.env.conf['stage']
     if not stage:
-        fabric.api.error(fabric.colors.red('No stage provided'))
+        raise Exception(fabric.colors.red('No stage provided'))
 
     autoscale_name, node_type = fabric.api.run('hostname').rsplit('-', 1)
     if node_type == 'template':
@@ -342,7 +327,7 @@ def go_save_templates(stage = None):
 def go_launch_autoscale(stage = None, force=False, ignore=False):
     stage = stage or fabric.api.env.conf['stage']
     if not stage:
-        fabric.api.error(fabric.colors.red('No stage provided'))
+        raise Exception(fabric.colors.red('No stage provided'))
 
     name, node_type = fabric.api.run('hostname').rsplit('-', 1)
     if node_type != 'template': return
@@ -356,7 +341,7 @@ def go_launch_autoscale(stage = None, force=False, ignore=False):
     
     print fabric.colors.blue('Processing group %s' % name)
     as_existing = conn.get_all_groups(names=[name])
-    if as_existing:
+    if as_existing: 
         if force:
             as_existing[0].shutdown_instances()
             print 'Waiting for instances to shut down...'
@@ -366,7 +351,7 @@ def go_launch_autoscale(stage = None, force=False, ignore=False):
             sleep(5)
             as_existing[0].delete()
         elif not ignore:
-            fabric.api.error(fabric.colors.red('Autoscaling group exists.  Use force=True to override or ignore=True to keep going'))
+            raise Exception(fabric.colors.red('Autoscaling group exists.  Use force=True to override or ignore=True to keep going'))
 
     lc = conn.get_all_launch_configurations(names=['%s-launch-config' % name])
     if lc:
@@ -389,7 +374,7 @@ def go_launch_autoscale(stage = None, force=False, ignore=False):
             if force:
                 existing[0].delete()
             elif not ignore:
-                fabric.api.error(fabric.colors.red('Load balancer exists.  Use force=True to override or ignore=True to keep going'))
+                raise Exception(fabric.colors.red('Load balancer exists.  Use force=True to override or ignore=True to keep going'))
     
         if not existing or force:
             balancer = elbconn.create_load_balancer(lb_values['name'], zones = [config['location']], 
@@ -562,6 +547,7 @@ def update_fab_deploy(fabfile=None):
             fabric.api.run('pip install -e git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
     if fabfile:
         fabric.api.put(fabfile, '/srv/active/fabfile.py')
-        
+
+@fabric.api.runs_once  
 def list_hosts():
     print fabric.api.env.hosts

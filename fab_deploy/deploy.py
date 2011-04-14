@@ -158,7 +158,7 @@ def deploy_project(tagname, force=False, use_existing=False, with_full_virtualen
 			with virtualenv():
 				pip_install()
 	
-	fabric.api.sudo('chown -R ubuntu:ubuntu /srv')
+	fabric.api.sudo('chown -R ubuntu:ubuntu /srv') 
 
 def make_src_dir():
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """
