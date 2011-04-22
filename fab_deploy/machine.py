@@ -18,6 +18,7 @@ import fabric.api
 import fabric.colors
 import fabric.contrib
 
+from boto import ec2
 
 from libcloud.compute.base import NodeImage, NodeLocation, NodeSize
 from libcloud.compute.types import Provider
@@ -446,19 +447,18 @@ def save_as_ami(name, arch='i386'):
 	
 def launch_auto_scaling(stage = 'development'):
 	config = get_provider_dict()
-	from boto.ec2.autoscale import AutoScaleConnection, AutoScalingGroup, LaunchConfiguration, Trigger
-	conn = AutoScaleConnection(fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], host='%s.autoscaling.amazonaws.com' % config['location'][:-1])
+	conn = ec2.autoscale.AutoScaleConnection(fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], host='%s.autoscaling.amazonaws.com' % config['location'][:-1])
 	
 	for name, values in config.get(stage, {}).get('autoscale', {}):
 		if any(group.name == name for group in conn.get_all_groups()):
 			fabric.api.warn(fabric.colors.orange('Autoscale group %s already exists' % name))
 			continue
-		lc = LaunchConfiguration(name = '%s-launch-config' % name, image_id = values['image'],  key_name = config['key'])
+		lc = ec2.autoscale.LaunchConfiguration(name = '%s-launch-config' % name, image_id = values['image'],  key_name = config['key'])
 		conn.create_launch_configuration(lc)
-		ag = AutoScalingGroup(group_name = name, load_balancers = values.get('load-balancers'), availability_zones = [config['location']], launch_config = lc, min_size = values['min-size'], max_size = values['max-size'])
+		ag = ec2.autoscale.AutoScalingGroup(group_name = name, load_balancers = values.get('load-balancers'), availability_zones = [config['location']], launch_config = lc, min_size = values['min-size'], max_size = values['max-size'])
 		conn.create_auto_scaling_group(ag)
 		if 'min-cpu' in values and 'max-cpu' in values:
-			tr = Trigger(name = '%s-trigger' % name, autoscale_group = ag, measure_name = 'CPUUtilization', statistic = 'Average', unit = 'Percent', dimensions = [('AutoScalingGroupName', ag.name)],
+			tr = ec2.autoscale.Trigger(name = '%s-trigger' % name, autoscale_group = ag, measure_name = 'CPUUtilization', statistic = 'Average', unit = 'Percent', dimensions = [('AutoScalingGroupName', ag.name)],
 						 period = 60, lower_threshold = values['min-cpu'], lower_breach_scale_increment = '-1', upper_threshold = values['max-cpu'], upper_breach_scale_increment = '2', breach_duration = 60)
 			conn.create_trigger(tr)
 		
