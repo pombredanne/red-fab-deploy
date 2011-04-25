@@ -18,6 +18,7 @@ import fabric.api
 import fabric.colors
 import fabric.contrib
 
+from boto import ec2
 
 from libcloud.compute.base import NodeImage, NodeLocation, NodeSize
 from libcloud.compute.types import Provider
@@ -150,8 +151,9 @@ def _get_provider_name():
 
 def _provider_exists(provider):
 	""" Abort if provider does not exist """
+	
 	if provider not in PROVIDER_DICT.keys():
-		fabric.api.abort(fabric.colors.red('Provider "%s" is not available' % provider))
+		fabric.api.abort(fabric.colors.red('Provider "%s" is not available, choose from %s' % (provider,PROVIDER_DICT.keys())))
 
 def _get_driver(provider):
 	""" Get the driver for the given provider """
@@ -348,7 +350,7 @@ def create_node(name, **kwargs):
 	""" Create a node server """
 	PROVIDER = get_provider_dict()
 	keyname  = kwargs.get('keyname',None)
-	image    = kwargs.get('image') or get_node_image(PROVIDER['image'])
+	image    = kwargs.get('image',get_node_image(PROVIDER['image']))
 	size     = kwargs.get('size','')
 	location = kwargs.get('location',get_node_location(PROVIDER['location']))
 	userdata = kwargs.get('userdata', '')
@@ -425,3 +427,40 @@ def update_nodes():
 						PROVIDER['machines'][stage][name].update(info)
 
 	write_conf(PROVIDER)
+
+def save_as_ami(name, arch='i386'):
+	config = get_provider_dict()
+	# Copy pk and cert to /tmp, somehow
+	fabric.api.put(fabric.api.env.conf['AWS_X509_PRIVATE_KEY'], '/tmp/pk.pem')
+	fabric.api.put(fabric.api.env.conf['AWS_X509_CERTIFICATE'], '/tmp/cert.pem')
+	
+	fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True)
+	package_update()
+	package_install('ec2-ami-tools', 'ec2-api-tools')
+	
+	fabric.api.sudo('ec2-bundle-vol -c /tmp/cert.pem -k /tmp/pk.pem -u %s -s 10240 -r %s' % (fabric.api.env.conf['AWS_ID'], arch))
+	fabric.api.sudo('ec2-upload-bundle -b %s -m /tmp/image.manifest.xml -a %s -s %s --location %s' % (fabric.api.env.conf['AWS_AMI_BUCKET'], fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], config['location'][:-1]))
+	result = fabric.api.sudo('ec2-register -C /tmp/cert.pem -K /tmp/pk.pem --region %s %s/image.manifest.xml -n %s' % (config['location'][:-1], fabric.api.env.conf['AWS_AMI_BUCKET'], name))
+	fabric.api.run('rm /tmp/pk.pem')
+	fabric.api.run('rm /tmp/cert.pem')
+	
+	ami = result.split()[1]
+	
+def launch_auto_scaling(stage = 'development'):
+	config = get_provider_dict()
+	conn = ec2.autoscale.AutoScaleConnection(fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], host='%s.autoscaling.amazonaws.com' % config['location'][:-1])
+	
+	for name, values in config.get(stage, {}).get('autoscale', {}):
+		if any(group.name == name for group in conn.get_all_groups()):
+			fabric.api.warn(fabric.colors.orange('Autoscale group %s already exists' % name))
+			continue
+		lc = ec2.autoscale.LaunchConfiguration(name = '%s-launch-config' % name, image_id = values['image'],  key_name = config['key'])
+		conn.create_launch_configuration(lc)
+		ag = ec2.autoscale.AutoScalingGroup(group_name = name, load_balancers = values.get('load-balancers'), availability_zones = [config['location']], launch_config = lc, min_size = values['min-size'], max_size = values['max-size'])
+		conn.create_auto_scaling_group(ag)
+		if 'min-cpu' in values and 'max-cpu' in values:
+			tr = ec2.autoscale.Trigger(name = '%s-trigger' % name, autoscale_group = ag, measure_name = 'CPUUtilization', statistic = 'Average', unit = 'Percent', dimensions = [('AutoScalingGroupName', ag.name)],
+						 period = 60, lower_threshold = values['min-cpu'], lower_breach_scale_increment = '-1', upper_threshold = values['max-cpu'], upper_breach_scale_increment = '2', breach_duration = 60)
+			conn.create_trigger(tr)
+		
+	

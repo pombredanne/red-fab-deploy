@@ -12,7 +12,6 @@ from fab_deploy.machine import (generate_config, get_provider_dict, stage_exists
 	ec2_create_key, ec2_authorize_port,
 	deploy_nodes, update_nodes)
 from fab_deploy.server import *
-from fab_deploy.server import web_server_setup,web_server_start,web_server_stop
 from fab_deploy.system import get_hostname, set_hostname, prepare_server
 from fab_deploy.utils import detect_os, run_as
 from fab_deploy.user import provider_as_ec2, ssh_local_keygen
@@ -152,11 +151,9 @@ def deploy_project(tagname, force=False, use_existing=False, with_full_virtualen
 			extra_opts='--links --perms')
 		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
 
-	with fabric.api.cd(tag_dir):
-		virtualenv_create()
+		virtualenv_create(dir = tag_dir)
 		if with_full_virtualenv:
-			with virtualenv():
-				pip_install()
+			pip_install(dir = tag_dir)
 	
 	fabric.api.sudo('chown -R ubuntu:ubuntu /srv') 
 
