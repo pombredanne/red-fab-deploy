@@ -9,8 +9,7 @@ Ubuntu 10.4 image sizes:
 	http://uec-images.ubuntu.com/lucid/current/
 """
 
-try: import simplejson as json
-except ImportError: import json
+import simplejson
 
 from pprint import pprint
 import os
@@ -19,6 +18,7 @@ import fabric.api
 import fabric.colors
 import fabric.contrib
 
+from boto import ec2
 
 from libcloud.compute.base import NodeImage, NodeLocation, NodeSize
 from libcloud.compute.types import Provider
@@ -65,7 +65,7 @@ EC2_MACHINES = {
 			'services': DB,
 			'size':'m1.small',},
 		'dbs2' : {
-			'services': DB,
+			'services': {'slave':'dbs1'},
 			'size':'m1.small',},
 	},
 }
@@ -92,19 +92,19 @@ PROVIDER_DICT = {
 			},
 			'production' : {
 				'load1' : {
-					'services': ['nginx'],
+					'services': {'nginx':{}},
 					'size':'2',}, # 512MB  RAM, 20GB
 				'web1'  : {
-					'services': ['uwsgi'],
+					'services': {'uwsgi':{}},
 					'size':'2',}, # 512MB  RAM, 20GB
 				'web2'  : {
-					'services': ['uwsgi'],
+					'services': {'uwsgi':{}},
 					'size':'2',}, # 512MB  RAM, 20GB
 				'dbs1'  : {
 					'services': DB,
 					'size':'3',}, # 1024MB RAM, 40GB
 				'dbs2'  : {
-					'services': DB,
+					'services': {'slave':'dbs1'},
 					'size':'3',}, # 1024MB RAM, 40GB
 			},
 		},
@@ -117,7 +117,7 @@ def write_conf(node_dict,filename=''):
 	if not filename:
 		filename = fabric.api.env.conf['CONF_FILE']
 	""" Overwrite the conf file with dictionary values """
-	obj = json.dumps(node_dict, sort_keys=True, indent=4)
+	obj = simplejson.dumps(node_dict, sort_keys=True, indent=4)
 	f = open(filename,'w')
 	f.write(obj)
 	f.close()
@@ -136,7 +136,7 @@ def generate_config(provider='ec2_us_east'):
 def get_provider_dict():
 	""" Get the dictionary of provider settings """
 	conf_file = fabric.api.env.conf['CONF_FILE']
-	return json.loads(open(conf_file,'r').read())
+	return simplejson.loads(open(conf_file,'r').read())
 
 def stage_exists(stage):
 	""" Abort if provider does not exist """
@@ -151,8 +151,9 @@ def _get_provider_name():
 
 def _provider_exists(provider):
 	""" Abort if provider does not exist """
+	
 	if provider not in PROVIDER_DICT.keys():
-		fabric.api.abort(fabric.colors.red('Provider "%s" is not available' % provider))
+		fabric.api.abort(fabric.colors.red('Provider "%s" is not available, choose from %s' % (provider,PROVIDER_DICT.keys())))
 
 def _get_driver(provider):
 	""" Get the driver for the given provider """
@@ -205,7 +206,7 @@ def ec2_create_key(keyname):
 	if not key_material:
 		fabric.api.abort(fabric.colors.red("Key Material was not returned"))
 	private_key = '%s.pem' % keyname
-	f = open(private_key, 'wb')
+	f = open(private_key, 'w')
 	f.write(key_material + '\n')
 	f.close()
 	os.chmod(private_key, 0600)
@@ -349,17 +350,16 @@ def create_node(name, **kwargs):
 	""" Create a node server """
 	PROVIDER = get_provider_dict()
 	keyname  = kwargs.get('keyname',None)
-	image    = kwargs.get('image') or get_node_image(PROVIDER['image'])
+	image    = kwargs.get('image',get_node_image(PROVIDER['image']))
 	size     = kwargs.get('size','')
 	location = kwargs.get('location',get_node_location(PROVIDER['location']))
-	userdata = kwargs.get('userdata', '')
 	
 	if 'ec2' in fabric.api.env.conf['PROVIDER']:
 		node = _get_connection().create_node(name=name, ex_keyname=keyname, 
 				image=image, size=size, location=location)
     	
 		# TODO: This does not work until libcloud 0.4.3
-		tags = {'Name':name, 'Server Type': kwargs.get('server_type', ''), 'Stage':kwargs.get('stage', '')}
+		tags = {'name':name,}
 		_get_connection().ex_create_tags(node,tags)
 
 	else:
@@ -369,7 +369,7 @@ def create_node(name, **kwargs):
 			key = NodeAuthSSHKey(pubkey)
 		else: key=None
 		node = _get_connection().create_node(name=name, auth=key,
-				image=image, size=size, location=location, ex_userdata=userdata)
+				image=image, size=size, location=location)
 	    
 	print fabric.colors.green('Node %s successfully created' % name)
 	return node
@@ -388,7 +388,7 @@ def deploy_nodes(stage='development',keyname=None):
 		node_dict = PROVIDER['machines'][stage][name]
 		if 'uuid' not in node_dict or not node_dict['uuid']:
 			size = get_node_size(node_dict['size'])
-			node = create_node(name,keyname=keyname,size=size,image=node_dict.get('image'),stage=stage,server_type=node_dict.get('server_type',''))
+			node = create_node(name,keyname=keyname,size=size,image=node_dict.get('image'))
 			node_dict.update({'id': node.id, 'uuid' : node.uuid,})
 			PROVIDER['machines'][stage][name] = node_dict
 		else:
@@ -426,3 +426,41 @@ def update_nodes():
 						PROVIDER['machines'][stage][name].update(info)
 
 	write_conf(PROVIDER)
+
+def save_as_ami(name, arch='i386'):
+	config = get_provider_dict()
+	# Copy pk and cert to /tmp, somehow
+	fabric.api.put(fabric.api.env.conf['AWS_X509_PRIVATE_KEY'], '/tmp/pk.pem')
+	fabric.api.put(fabric.api.env.conf['AWS_X509_CERTIFICATE'], '/tmp/cert.pem')
+	
+	fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True)
+	package_update()
+	package_install('ec2-ami-tools', 'ec2-api-tools')
+	
+	fabric.api.sudo('ec2-bundle-vol -c /tmp/cert.pem -k /tmp/pk.pem -u %s -s 10240 -r %s' % (fabric.api.env.conf['AWS_ID'], arch))
+	fabric.api.sudo('ec2-upload-bundle -b %s -m /tmp/image.manifest.xml -a %s -s %s --location %s' % (fabric.api.env.conf['AWS_AMI_BUCKET'], fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], config['location'][:-1]))
+	result = fabric.api.sudo('ec2-register -C /tmp/cert.pem -K /tmp/pk.pem --region %s %s/image.manifest.xml -n %s' % (config['location'][:-1], fabric.api.env.conf['AWS_AMI_BUCKET'], name))
+	fabric.api.run('rm /tmp/pk.pem')
+	fabric.api.run('rm /tmp/cert.pem')
+	
+	ami = result.split()[1]
+	
+def launch_auto_scaling(stage = 'development'):
+	config = get_provider_dict()
+	conn = ec2.autoscale.AutoScaleConnection(fabric.api.env.conf['AWS_ACCESS_KEY_ID'], fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'], host='%s.autoscaling.amazonaws.com' % config['location'][:-1])
+	
+	for name, values in config.get(stage, {}).get('autoscale', {}):
+		if any(group.name == name for group in conn.get_all_groups()):
+			fabric.api.warn(fabric.colors.orange('Autoscale group %s already exists' % name))
+			continue
+		lc = ec2.autoscale.LaunchConfiguration(name = '%s-launch-config' % name, image_id = values['image'],  key_name = config['key'])
+		conn.create_launch_configuration(lc)
+		ag = ec2.autoscale.AutoScalingGroup(group_name = name, load_balancers = values.get('load-balancers'), availability_zones = [config['location']], launch_config = lc, min_size = values['min-size'], max_size = values['max-size'])
+		conn.create_auto_scaling_group(ag)
+		if 'min-cpu' in values and 'max-cpu' in values:
+			tr = ec2.autoscale.Trigger(name = '%s-trigger' % name, autoscale_group = ag, measure_name = 'CPUUtilization', statistic = 'Average', unit = 'Percent', dimensions = [('AutoScalingGroupName', ag.name)],
+						 period = 60, lower_threshold = values['min-cpu'], lower_breach_scale_increment = '-1', upper_threshold = values['max-cpu'], upper_breach_scale_increment = '2', breach_duration = 60)
+			conn.create_trigger(tr)
+		
+	 	
+	

@@ -12,7 +12,6 @@ from fab_deploy.machine import (generate_config, get_provider_dict, stage_exists
 	ec2_create_key, ec2_authorize_port,
 	deploy_nodes, update_nodes)
 from fab_deploy.server import *
-from fab_deploy.server import web_server_setup,web_server_start,web_server_stop
 from fab_deploy.system import get_hostname, set_hostname, prepare_server
 from fab_deploy.utils import detect_os, run_as
 from fab_deploy.user import provider_as_ec2, ssh_local_keygen
@@ -62,36 +61,34 @@ def go_setup(stage="development"):
 	
 	# Begin installing and setting up services
 	for name in PROVIDER['machines'][stage]:
-		node_data = PROVIDER['machines'][stage][name]
-		address = node_dict['public_ip'][0]
-		if address == fabric.api.env.host:
+		node_dict = PROVIDER['machines'][stage][name]
+		host = node_dict['public_ip'][0]
+		if host == fabric.api.env.host:
 			set_hostname(name)
 			prepare_server()
-			install_services(node_dict['id'], name, address, stage, replication=replcation)
-
-def install_services(id, name, address, stage, node_data, **kwargs):
-	for service in node_data['services']:
-		settings = node_data['services'][service]
-		if service == 'nginx':
-			nginx_install()
-			nginx_setup(stage=stage)
-		elif service == 'uwsgi':
-			uwsgi_install()
-			uwsgi_setup(stage=stage)
-		elif service == 'mysql':
-			mysql_install()
-			mysql_setup(stage=stage,replication=kwargs.get('replication'),**settings)
-		elif service == 'postgresql':
-			postgresql_install(id, name, address, stage, settings, **kwargs)
-			postgresql_setup(id, name, address, stage, settings, **kwargs)
-		elif service == 'postgresql-client':
-			postgresql_client_install(id, name, address, stage, settings, **kwargs)
-		elif service == 'pgpool':
-			pgpool_install(id, name, address, stage, settings, **kwargs)
-		elif service in ['apache']:
-			fabric.api.warn(fabric.colors.yellow("%s is not yet available" % service))
-		else:
-			fabric.api.warn(fabric.colors.orange('%s is not an available service' % service))
+			for service in node_dict['services'].keys():
+				settings = node_dict['services'][service]
+				if service == 'nginx':
+					nginx_install()
+					nginx_setup(stage=stage)
+				elif service == 'redis':
+					redis_install()
+					redis_setup()
+				elif service == 'uwsgi':
+					uwsgi_install()
+					uwsgi_setup(stage=stage)
+				elif service == 'mysql':
+					mysql_install()
+					mysql_setup(stage=stage,replication=replication,**settings)
+				elif service == 'postgresql':
+					postgresql_install(name, node_dict, stage=stage, **settings)
+					postgresql_setup(name, node_dict, stage=stage, **settings)
+				elif service == 'postgresql-client':
+					postgresql_client_install()
+				elif service in ['apache']:
+					fabric.api.warn(fabric.colors.yellow("%s is not yet available" % service))
+				else:
+					fabric.api.warn('%s is not an available service' % service)
 
 def go_deploy(stage="development", tagname="trunk"):
 	"""
@@ -111,13 +108,17 @@ def go_deploy(stage="development", tagname="trunk"):
 			if list(set(['nginx','uwsgi','apache']) & set(node_dict['services'])):
 				deploy_full(tagname,force=True)
 	
-	# Link the hostname to the <stage>.py file
-	hostname = get_hostname()
-	host_dir = os.path.join(fabric.api.env.conf['SRC_DIR'],tagname,'project/settings')
-	if not fabric.contrib.files.exists(os.path.join(host_dir,'%s.py' % hostname)):
-		link(os.path.join(host_dir,'%s.py' % stage), 
-			dest=os.path.join(host_dir,'%s.py' % hostname),
-			do_unlink=True, silent=True)
+				# Link the hostname to the <stage>.py file
+				# Commented out as the environment-specific settings are called
+				# settings/staging.py or settings/production.py, and if someone
+				# really needs host-specific settings (e.g. two different files
+				# for web1 and web2), then he would write them by hand anyway
+				# hostname = get_hostname()
+				# host_dir = os.path.join(fabric.api.env.conf['SRC_DIR'],tagname,'project/settings')
+				# if not fabric.contrib.files.exists(os.path.join(host_dir,'%s.py' % hostname)):
+				# 	link(os.path.join(host_dir,'%s.py' % stage), 
+				# 		dest=os.path.join(host_dir,'%s.py' % hostname),
+				# 		do_unlink=True, silent=True)
 				
 def deploy_full(tagname, force=False):
 	""" 
@@ -127,7 +128,7 @@ def deploy_full(tagname, force=False):
 	deploy_project(tagname,force=force)
 	make_active(tagname)
 
-def deploy_project(tagname, force=False, use_existing=False, with_virtualenv=True):
+def deploy_project(tagname, force=False):
 	""" Deploys project on prepared server. """
 	make_src_dir()
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
@@ -135,29 +136,24 @@ def deploy_project(tagname, force=False, use_existing=False, with_virtualenv=Tru
 		if force:
 			fabric.api.warn(fabric.colors.yellow('Removing directory %s and all its contents.' % tag_dir))
 			fabric.api.run('rm -rf %s' % tag_dir)
-		elif not use_existing:
-			fabric.api.abort(fabric.colors.red('Tagged directory already exists: %s' % tagname))
-	else:
-		if tagname == 'trunk':
-			vcs.push(tagname)
 		else:
-			fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
-			with fabric.api.lcd('/tmp'):
-				vcs.export(tagname, local=True)
-			fabric.contrib.project.rsync_project(
-				local_dir = os.path.join('/tmp', tagname),
-				remote_dir = fabric.api.env.conf['SRC_DIR'],
-				extra_opts='--links')
-			fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+			fabric.api.abort(fabric.colors.red('Tagged directory already exists: %s' % tagname))
 
-		if with_virtualenv:
-			with fabric.api.cd(tag_dir):
-				virtualenv_create()
+	if tagname == 'trunk':
+		vcs.push(tagname)
+	else:
+		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+		with fabric.api.lcd('/tmp'):
+			vcs.export(tagname, local=True)
+		fabric.contrib.project.rsync_project(
+			local_dir = os.path.join('/tmp', tagname),
+			remote_dir = fabric.api.env.conf['SRC_DIR'],
+			exclude = fabric.api.env.conf['RSYNC_EXCLUDE'], 
+			extra_opts='--links --perms')
+		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
 
-	if with_virtualenv:
-		with fabric.api.cd(tag_dir):
-			with virtualenv():
-				pip_install()
+	virtualenv_create(dir=tag_dir)
+	pip_install(dir=tag_dir)
 	
 	fabric.api.sudo('chown -R ubuntu:ubuntu /srv')
 
