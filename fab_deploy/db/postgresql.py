@@ -165,9 +165,12 @@ def postgresql_setup(id, name, address, stage, options, **kwargs):
 				fabric.api.sudo('su postgres -c "createdb -U %s %s"' % (options['user'], options['name']))
 
 def pgpool_install(id, name, address, stage, options, **kwargs):
-	#if _pgpool_is_installed():
-	#	fabric.api.warn(fabric.colors.yellow('pgpool is already installed.'))
-	#	return
+	if _pgpool_is_installed():
+		fabric.api.warn(fabric.colors.yellow('pgpool is already installed.'))
+		return
+	
+	with fabric.api.settings(warn_only = True):
+		fabric.api.sudo('service pgpool stop')
 
 	package_install('libpq-dev')
 	compile_and_install('http://pgfoundry.org/frs/download.php/2958/pgpool-II-3.0.3.tar.gz', '--with-openssl --sysconfdir=/etc')
@@ -187,7 +190,7 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 
 	fabric.api.sudo('mkdir -p /var/log/pgpool')
 	#fabric.api.sudo('pgpool -c -f /etc/pgpool.conf')
-	fabric.api.sudo('service pgpool restart')
+	fabric.api.sudo('service pgpool start')
 
 def pgpool_set_hosts(*hosts):
 	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)	

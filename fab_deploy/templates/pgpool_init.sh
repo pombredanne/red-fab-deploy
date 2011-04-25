@@ -29,8 +29,11 @@ DAEMON_OPTS="-c -f /etc/pgpool.conf"
 case "$1" in
   start)
         echo -n "Starting $DESC: "
-        start-stop-daemon --start --chuid $OWNER:$OWNER --user $OWNER \
+        while [ ! "`pidof pgpool`" ]; do
+            start-stop-daemon -o --start --chuid $OWNER:$OWNER --user $OWNER \
                 --exec $DAEMON -- $DAEMON_OPTS
+            sleep 1
+        done
         echo "Done."
         ;;
   stop)
@@ -50,8 +53,11 @@ case "$1" in
         start-stop-daemon -o --signal 3 --quiet --retry 2 --stop \
                 --exec $DAEMON
         sleep 1
-        start-stop-daemon --user $OWNER --start --quiet --chuid $OWNER:$OWNER \
-               --exec $DAEMON -- $DAEMON_OPTS
+        while [ ! "`pidof pgpool`" ]; do
+            start-stop-daemon -o --start --chuid $OWNER:$OWNER --user $OWNER \
+                --exec $DAEMON -- $DAEMON_OPTS
+            sleep 1
+        done
         echo "Done."
         ;;
   status)  

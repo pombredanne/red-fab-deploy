@@ -279,10 +279,9 @@ def _go_setup_autoscale(stage = None):
 
     if 'pgpool' in options['services']:
         dbnodes = config['autoscale'][stage][options['db-autoscale']]['nodes']
-        pgpool_set_hosts(ec2_instance(dbnodes['master']).public_dns_name, ec2_instance(dbnodes['template']).public_dns_name)
+        pgpool_set_hosts([ec2_instance(dbnodes['master']).public_dns_name, ec2_instance(dbnodes['template']).public_dns_name])
     
     package_install('fabric')
-    fabric.api.sudo('pip install git+http://github.com/apache/libcloud.git#egg=apache-libcloud') #HACK
 #    grab_from_web('http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip')
 #    grab_from_web('http://ec2-downloads.s3.amazonaws.com/CloudWatch-2010-08-01.zip')
 #    append('/home/ubuntu/.bashrc', 'export PATH=$PATH:/home/ubuntu/AutoScaling-2010-08-01/bin/:/home/ubuntu/CloudWatch-2010-08-01/bin/')
@@ -304,7 +303,8 @@ def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     data = get_data()
 
     deploy_project(tagname, force=force, use_existing=use_existing, with_full_virtualenv = data['server_type'] != 'db')
-
+    update_fab_deploy()
+    
     make_active(tagname)
  
     fabric.api.env.conf.post_activate.get(data['server_type'], lambda: None)()
@@ -544,7 +544,8 @@ def update_fab_deploy(fabfile=None):
     with fabric.api.cd('/srv/active/'):
         fabric.api.run('ls env || virtualenv env')
         with virtualenv():
-            fabric.api.run('pip install -e git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
+            fabric.api.run('pip install -e git+git://github.com/apache/libcloud.git#egg=apache-libcloud') #HACK
+            fabric.api.run('pip install -e git+git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
     if fabfile:
         fabric.api.put(fabfile, '/srv/active/fabfile.py')
 
