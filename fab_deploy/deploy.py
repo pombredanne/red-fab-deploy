@@ -111,13 +111,17 @@ def go_deploy(stage="development", tagname="trunk"):
 			if list(set(['nginx','uwsgi','apache']) & set(node_dict['services'])):
 				deploy_full(tagname,force=True)
 	
-	# Link the hostname to the <stage>.py file
-	hostname = get_hostname()
-	host_dir = os.path.join(fabric.api.env.conf['SRC_DIR'],tagname,'project/settings')
-	if not fabric.contrib.files.exists(os.path.join(host_dir,'%s.py' % hostname)):
-		link(os.path.join(host_dir,'%s.py' % stage), 
-			dest=os.path.join(host_dir,'%s.py' % hostname),
-			do_unlink=True, silent=True)
+				# Link the hostname to the <stage>.py file
+				# Commented out as the environment-specific settings are called
+				# settings/staging.py or settings/production.py, and if someone
+				# really needs host-specific settings (e.g. two different files
+				# for web1 and web2), then he would write them by hand anyway
+				# hostname = get_hostname()
+				# host_dir = os.path.join(fabric.api.env.conf['SRC_DIR'],tagname,'project/settings')
+				# if not fabric.contrib.files.exists(os.path.join(host_dir,'%s.py' % hostname)):
+				# 	link(os.path.join(host_dir,'%s.py' % stage), 
+				# 		dest=os.path.join(host_dir,'%s.py' % hostname),
+				# 		do_unlink=True, silent=True)
 				
 def deploy_full(tagname, force=False):
 	""" 
@@ -138,23 +142,19 @@ def deploy_project(tagname, force=False, use_existing=False, with_full_virtualen
 		elif not use_existing:
 			fabric.api.abort(fabric.colors.red('Tagged directory already exists: %s' % tagname))
 	else:
-		if tagname == 'trunk':
-			vcs.push(tagname)
-		else:
-			fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
-			with fabric.api.lcd('/tmp'):
-				vcs.export(tagname, local=True)
-			fabric.contrib.project.rsync_project(
-				local_dir = os.path.join('/tmp', tagname),
-				remote_dir = fabric.api.env.conf['SRC_DIR'],
-				extra_opts='--links')
-			fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+		with fabric.api.lcd('/tmp'):
+			vcs.export(tagname, local=True)
+		fabric.contrib.project.rsync_project(
+			local_dir = os.path.join('/tmp', tagname),
+			remote_dir = fabric.api.env.conf['SRC_DIR'],
+			exclude = fabric.api.env.conf['RSYNC_EXCLUDE'],
+			extra_opts='--links --perms')
+		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
 
-		with fabric.api.cd(tag_dir):
-			virtualenv_create()
-
-	if with_full_virtualenv:
-		with fabric.api.cd(tag_dir):
+	with fabric.api.cd(tag_dir):
+		virtualenv_create()
+		if with_full_virtualenv:
 			with virtualenv():
 				pip_install()
 	
