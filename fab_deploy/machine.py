@@ -206,7 +206,7 @@ def ec2_create_key(keyname):
 	if not key_material:
 		fabric.api.abort(fabric.colors.red("Key Material was not returned"))
 	private_key = '%s.pem' % keyname
-	f = open(private_key, 'w')
+	f = open(private_key, 'wb')
 	f.write(key_material + '\n')
 	f.close()
 	os.chmod(private_key, 0600)
@@ -353,13 +353,14 @@ def create_node(name, **kwargs):
 	image    = kwargs.get('image',get_node_image(PROVIDER['image']))
 	size     = kwargs.get('size','')
 	location = kwargs.get('location',get_node_location(PROVIDER['location']))
+	userdata = kwargs.get('userdata', '')
 	
 	if 'ec2' in fabric.api.env.conf['PROVIDER']:
 		node = _get_connection().create_node(name=name, ex_keyname=keyname, 
 				image=image, size=size, location=location)
     	
 		# TODO: This does not work until libcloud 0.4.3
-		tags = {'name':name,}
+		tags = {'Name':name, 'Server Type': kwargs.get('server_type', ''), 'Stage':kwargs.get('stage', '')}
 		_get_connection().ex_create_tags(node,tags)
 
 	else:
@@ -369,7 +370,7 @@ def create_node(name, **kwargs):
 			key = NodeAuthSSHKey(pubkey)
 		else: key=None
 		node = _get_connection().create_node(name=name, auth=key,
-				image=image, size=size, location=location)
+				image=image, size=size, location=location, ex_userdata=userdata)
 	    
 	print fabric.colors.green('Node %s successfully created' % name)
 	return node
@@ -388,7 +389,7 @@ def deploy_nodes(stage='development',keyname=None):
 		node_dict = PROVIDER['machines'][stage][name]
 		if 'uuid' not in node_dict or not node_dict['uuid']:
 			size = get_node_size(node_dict['size'])
-			node = create_node(name,keyname=keyname,size=size,image=node_dict.get('image'))
+			node = create_node(name,keyname=keyname,size=size,image=node_dict.get('image'),stage=stage,server_type=node_dict.get('server_type',''))
 			node_dict.update({'id': node.id, 'uuid' : node.uuid,})
 			PROVIDER['machines'][stage][name] = node_dict
 		else:
@@ -462,5 +463,4 @@ def launch_auto_scaling(stage = 'development'):
 						 period = 60, lower_threshold = values['min-cpu'], lower_breach_scale_increment = '-1', upper_threshold = values['max-cpu'], upper_breach_scale_increment = '2', breach_duration = 60)
 			conn.create_trigger(tr)
 		
-	 	
 	

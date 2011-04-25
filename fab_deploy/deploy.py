@@ -61,34 +61,36 @@ def go_setup(stage="development"):
 	
 	# Begin installing and setting up services
 	for name in PROVIDER['machines'][stage]:
-		node_dict = PROVIDER['machines'][stage][name]
-		host = node_dict['public_ip'][0]
-		if host == fabric.api.env.host:
+		node_data = PROVIDER['machines'][stage][name]
+		address = node_dict['public_ip'][0]
+		if address == fabric.api.env.host:
 			set_hostname(name)
 			prepare_server()
-			for service in node_dict['services'].keys():
-				settings = node_dict['services'][service]
-				if service == 'nginx':
-					nginx_install()
-					nginx_setup(stage=stage)
-				elif service == 'redis':
-					redis_install()
-					redis_setup()
-				elif service == 'uwsgi':
-					uwsgi_install()
-					uwsgi_setup(stage=stage)
-				elif service == 'mysql':
-					mysql_install()
-					mysql_setup(stage=stage,replication=replication,**settings)
-				elif service == 'postgresql':
-					postgresql_install(name, node_dict, stage=stage, **settings)
-					postgresql_setup(name, node_dict, stage=stage, **settings)
-				elif service == 'postgresql-client':
-					postgresql_client_install()
-				elif service in ['apache']:
-					fabric.api.warn(fabric.colors.yellow("%s is not yet available" % service))
-				else:
-					fabric.api.warn('%s is not an available service' % service)
+			install_services(node_dict['id'], name, address, stage, replication=replcation)
+
+def install_services(id, name, address, stage, node_data, **kwargs):
+	for service in node_data['services']:
+		settings = node_data['services'][service]
+		if service == 'nginx':
+			nginx_install()
+			nginx_setup(stage=stage)
+		elif service == 'uwsgi':
+			uwsgi_install()
+			uwsgi_setup(stage=stage)
+		elif service == 'mysql':
+			mysql_install()
+			mysql_setup(stage=stage,replication=kwargs.get('replication'),**settings)
+		elif service == 'postgresql':
+			postgresql_install(id, name, address, stage, settings, **kwargs)
+			postgresql_setup(id, name, address, stage, settings, **kwargs)
+		elif service == 'postgresql-client':
+			postgresql_client_install(id, name, address, stage, settings, **kwargs)
+		elif service == 'pgpool':
+			pgpool_install(id, name, address, stage, settings, **kwargs)
+		elif service in ['apache']:
+			fabric.api.warn(fabric.colors.yellow("%s is not yet available" % service))
+		else:
+			fabric.api.warn(fabric.colors.orange('%s is not an available service' % service))
 
 def go_deploy(stage="development", tagname="trunk"):
 	"""
@@ -128,7 +130,7 @@ def deploy_full(tagname, force=False):
 	deploy_project(tagname,force=force)
 	make_active(tagname)
 
-def deploy_project(tagname, force=False):
+def deploy_project(tagname, force=False, use_existing=False, with_full_virtualenv=True):
 	""" Deploys project on prepared server. """
 	make_src_dir()
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
@@ -136,11 +138,8 @@ def deploy_project(tagname, force=False):
 		if force:
 			fabric.api.warn(fabric.colors.yellow('Removing directory %s and all its contents.' % tag_dir))
 			fabric.api.run('rm -rf %s' % tag_dir)
-		else:
+		elif not use_existing:
 			fabric.api.abort(fabric.colors.red('Tagged directory already exists: %s' % tagname))
-
-	if tagname == 'trunk':
-		vcs.push(tagname)
 	else:
 		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
 		with fabric.api.lcd('/tmp'):
@@ -152,10 +151,11 @@ def deploy_project(tagname, force=False):
 			extra_opts='--links --perms')
 		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
 
-	virtualenv_create(dir=tag_dir)
-	pip_install(dir=tag_dir)
+		virtualenv_create(dir = tag_dir)
+		if with_full_virtualenv:
+			pip_install(dir = tag_dir)
 	
-	fabric.api.sudo('chown -R ubuntu:ubuntu /srv')
+	fabric.api.sudo('chown -R ubuntu:ubuntu /srv') 
 
 def make_src_dir():
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """

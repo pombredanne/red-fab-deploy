@@ -165,16 +165,19 @@ def postgresql_setup(id, name, address, stage, options, **kwargs):
 				fabric.api.sudo('su postgres -c "createdb -U %s %s"' % (options['user'], options['name']))
 
 def pgpool_install(id, name, address, stage, options, **kwargs):
-	#if _pgpool_is_installed():
-	#	fabric.api.warn(fabric.colors.yellow('pgpool is already installed.'))
-	#	return
+	if _pgpool_is_installed():
+		fabric.api.warn(fabric.colors.yellow('pgpool is already installed.'))
+		return
+	
+	with fabric.api.settings(warn_only = True):
+		fabric.api.sudo('service pgpool stop')
 
 	package_install('libpq-dev')
 	compile_and_install('http://pgfoundry.org/frs/download.php/2958/pgpool-II-3.0.3.tar.gz', '--with-openssl --sysconfdir=/etc')
 	fabric.api.put(os.path.join(fabric.api.env.conf['FILES'], 'pgpool.conf'), '/etc/pgpool.conf', use_sudo=True)
 	
 	# Add user for health check
-	append('/etc/pool_passwd', 'pgpool:%s' % fabric.api.run('pg_md5 %s' % options['password']), True)
+	append('/etc/pcp.conf', 'pgpool:%s' % fabric.api.run('pg_md5 %s' % options['password']), True)
 	
 	# Service script
 	service_script = '/etc/init.d/pgpool'
@@ -187,16 +190,12 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 
 	fabric.api.sudo('mkdir -p /var/log/pgpool')
 	#fabric.api.sudo('pgpool -c -f /etc/pgpool.conf')
-	fabric.api.sudo('service pgpool restart')
+	fabric.api.sudo('service pgpool start')
 
-def pgpool_set_hosts(initial_master, *initial_slaves):
-	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)
-	append('/etc/pgpool.conf', ['backend_hostname0 = %s' % initial_master,
-								'backend_port0 = 5432',
-								'backend_weight0 = 1'], use_sudo=True)
-	
-	for i, slave in enumerate(initial_slaves):
-		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i+1, slave),
+def pgpool_set_hosts(*hosts):
+	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)	
+	for i, slave in enumerate(*hosts):
+		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave),
 									'backend_port%d = 5432' % i,
 									'backend_weight%d = 1' % i], use_sudo=True)
 		
