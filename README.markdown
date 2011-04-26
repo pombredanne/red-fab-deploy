@@ -82,16 +82,16 @@ AWS this will create a default key file and authorize tcp ports 22 and 80 for us
 
 		$ fab generate_config
 		$ fab go:development
-		$ fab update_nodes # might need to wait a minute and run this
+		$ fab update_instances # might need to wait a minute and run this
 
 3. You must wait until all your instances have spawned before going further.  This could take 
 up to 5 minutes.
 
-4. To install all the correct software on your new development node run the following:
+4. To install all the correct software on your new development instance run the following:
 
 		$ fab -i deploy/[your private SSH key here] set_hosts:development go_setup:development
 
-	This will grab all the development node ip addresses, set them as hosts, and then run
+	This will grab all the development instance ip addresses, set them as hosts, and then run
 	a software setup package on each of the servers based on the generated config file.
 
 5. Next you want to deploy to the development server by running the following:
@@ -107,7 +107,7 @@ Production is almost identical to development, except for the following:
 
 	$ fab generate_config # Do not overwrite an earlier file
 	$ fab go:production
-	$ fab update_nodes # might need to wait a minute and run this
+	$ fab update_instances # might need to wait a minute and run this
 	$ fab -i deploy/[your private SSH key here] set_hosts:production go_setup:production
 	$ fab -i deploy/[your private SSH key here] set_hosts:production go_deploy:production,tag
 
