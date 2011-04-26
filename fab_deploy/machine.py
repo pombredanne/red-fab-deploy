@@ -1,12 +1,7 @@
 """
-Much of this code was compiled from:
-
-http://incubator.apache.org/libcloud/getting-started.html
-http://agiletesting.blogspot.com/2010/12/using-libcloud-to-manage-instances.html
-http://agiletesting.blogspot.com/2011/01/libcloud-042-and-ssl.html
-
-Ubuntu 10.4 image sizes:
-	http://uec-images.ubuntu.com/lucid/current/
+Ubuntu image sizes:
+    http://alestic.com/
+    http://uec-images.ubuntu.com/lucid/current/
 """
 
 from pprint import pprint
@@ -162,9 +157,9 @@ EC2_INSTANCE_TYPES = {
 }
 
 def write_conf(instance,filename=''):
+	""" Overwrite the conf file with dictionary values """
 	if not filename:
 		filename = fabric.api.env.conf['CONF_FILE']
-	""" Overwrite the conf file with dictionary values """
 	obj = simplejson.dumps(instance, sort_keys=True, indent=4)
 	f = open(filename,'w')
 	f.write(obj)
@@ -394,8 +389,8 @@ def deploy_instances(stage='development',key_name=None):
 			instance = create_instance(name,
 				key_name      = key_name,
 				image_id      = inst.get('image',None),
-				instance_type = inst.get('size',None),
-				placement     = inst.get('placement',None),
+				instance_type = inst.get('size','m1.small'),
+				placement     = inst.get('placement','us-east-1b'),
 				)
 			inst.update({'id': instance.id})
 
