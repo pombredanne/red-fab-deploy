@@ -4,7 +4,7 @@ import time
 import fabric.api, fabric.contrib.files
 
 from fab_deploy.package import package_install, package_add_repository
-from fab_deploy.machine import get_provider_dict
+from fab_deploy.machine import get_provider_dict, get_connection
 from fab_deploy.utils import append
 
 def _postgresql_is_installed():
@@ -17,7 +17,7 @@ def _postgresql_client_is_installed():
 		output = fabric.api.run('psql --version')
 	return output.succeeded
 
-def postgresql_install(id, node_dict, stage, **options):
+def postgresql_install(id, instance_dict, stage, **options):
 	""" Installs postgreSQL """
 
 	if _postgresql_is_installed():
@@ -42,21 +42,24 @@ def postgresql_install(id, node_dict, stage, **options):
 			package_install('mdadm', '--no-install-recommends')
 			
 			# Create two ebs volumes
-			import boto.ec2
-			ec2 = boto.ec2.connect_to_region(config['location'][:-1],
-								aws_access_key_id = fabric.api.env.conf['AWS_ACCESS_KEY_ID'],
-								aws_secret_access_key = fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'])
+			ec2 = get_connection()
+			# PLEASE MOVE ALL EC2 METHODS TO machines.py
+
+			#import boto.ec2
+			#ec2 = boto.ec2.connect_to_region(config['location'][:-1],
+			#					aws_access_key_id = fabric.api.env.conf['AWS_ACCESS_KEY_ID'],
+			#					aws_secret_access_key = fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'])
 			
 			tag1 = u'%s-1' % id
 			tag2 = u'%s-2' % id
 			if not any(vol for vol in ec2.get_all_volumes() if vol.tags.get(u'Name') == tag1):
 				volume1 = ec2.create_volume(options.get('max-size', 10)/2, config['location'])
 				volume1.add_tag('Name', tag1)
-				volume1.attach(node_dict['id'], '/dev/sdf')
+				volume1.attach(instance_dict['id'], '/dev/sdf')
 			if not any(vol for vol in ec2.get_all_volumes() if vol.tags.get(u'Name') == tag2):
 				volume2 = ec2.create_volume(options.get('max-size', 10)/2, config['location'])
 				volume2.add_tag('Name', tag2)
-				volume2.attach(node_dict['id'], '/dev/sdg')
+				volume2.attach(instance_dict['id'], '/dev/sdg')
 			
 			time.sleep(10)
 			
@@ -121,7 +124,7 @@ def postgresql_install(id, node_dict, stage, **options):
 			"primary_conninfo = 'host=%s port=5432 user=%s password=%s'" % (master['public_ip'][0], options['user'], options['password']),
 			"trigger_file = '/data/failover'"], True)
 		
-		fabric.api.local('''ssh -i %s ubuntu@%s sudo tar czf - /data | ssh -i deploy/nbc-west.pem ubuntu@%s sudo tar xzf - -C /''' % (fabric.api.env.key_filename[0], master['public_ip'][0], node_dict['public_ip'][0]))
+		fabric.api.local('''ssh -i %s ubuntu@%s sudo tar czf - /data | ssh -i deploy/nbc-west.pem ubuntu@%s sudo tar xzf - -C /''' % (fabric.api.env.key_filename[0], master['public_ip'][0], instance_dict['public_ip'][0]))
 		fabric.api.sudo('chown -R postgres:postgres /data')
 	
 	fabric.api.sudo('service postgresql start')
@@ -138,7 +141,7 @@ def postgresql_client_install():
 	package_install('libpq-dev')
 	'http://pgfoundry.org/frs/download.php/2958/pgpool-II-3.0.3.tar.gz'
 	
-def postgresql_setup(id, node_dict, stage, **options):
+def postgresql_setup(id, instance_dict, stage, **options):
 	if 'slave' not in options:
 		with fabric.api.settings(warn_only = True):
 			fabric.api.sudo('su postgres -c "createuser -s -U postgres -P %s"' % (options['user']))

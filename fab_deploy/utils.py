@@ -114,10 +114,10 @@ def set_hosts(stage='development',username='ubuntu',machine=''):
 	if stage in PROVIDER['machines']:
 		for name in PROVIDER['machines'][stage]:
 			if (machine and machine == name) or not machine:
-				node_dict = PROVIDER['machines'][stage][name]
-				if 'public_ip' in node_dict:
-					public_ip = node_dict['public_ip']
-					services  = node_dict['services']
+				instance_dict = PROVIDER['machines'][stage][name]
+				if 'public_ip' in instance_dict:
+					public_ip = instance_dict['public_ip']
+					services  = instance_dict['services']
 					for ip in public_ip:
 						host = '%s@%s' % (username,ip)
 						# Set up databases first

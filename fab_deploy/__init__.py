@@ -1,9 +1,9 @@
 #--- Deployment
 from fab_deploy.machine import (generate_config,
 	ec2_create_key, ec2_authorize_port,
-	print_node, print_node_image, print_node_size, print_node_location,
-	print_nodes, print_node_images, print_node_sizes, print_node_locations,
-	create_node, deploy_nodes, update_nodes, save_as_ami)
+	print_instance,  print_image,  print_size,  print_region,
+	print_instances, print_images, print_sizes, print_regions,
+	create_instance, deploy_instances, update_instances, save_as_ami)
 
 from fab_deploy.deploy import (go, go_setup, go_deploy,
 	deploy_full, deploy_project,
