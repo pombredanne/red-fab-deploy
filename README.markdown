@@ -21,9 +21,6 @@ IMPORTANT: red-fab-deploy will only work if you install the following packages:
 	$ pip install boto
 	$ pip install -e git+git://github.com/ff0000/red-fab-deploy.git#egg=red-fab-deploy
 
-Be aware that the dependencies are Fabric>=1.0 and apache-libcloud>=0.4.3.  These
-packages are at the cutting edge and without them you will see things break.
-
 ## Important Notes
 
 Configuration files for apache, nginx, and uwsgi must follow a very common naming
