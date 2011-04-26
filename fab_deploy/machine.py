@@ -253,7 +253,7 @@ def ec2_authorize_port(name,protocol,port):
 			}
 	return get_connection().authorize_security_group(**params)
 	
-#=== List Node Instances
+#=== List Instances
 
 def list_instances():
 	""" Return a list of instances """
@@ -279,7 +279,7 @@ def list_regions():
 	_set_access_secret_keys()
 	return ec2.regions()
 
-#=== Get Node Instance
+#=== Get Instances
 
 def get_instance(name):
 	""" Get an instance by name """
@@ -308,7 +308,7 @@ def get_region(region_id):
 	"""
 	return [r for r in list_regions() if r.name == region_id][0]
 
-#=== Print Singular Node Instances
+#=== Print Singular Instances
 
 def print_instance(name):
 	""" Pretty print an instance by name """
@@ -328,7 +328,7 @@ def print_region(region_id):
 	""" Pretty print a region by id """
 	pprint(get_region(region_id).__dict__)
 
-#=== Print List of Node Instances
+#=== Print List of Instances
 
 def print_instances():
 	""" Pretty print the list of instances """
@@ -346,7 +346,7 @@ def print_regions():
 	""" Pretty print the list of regions """
 	for r in list_regions(): pprint(r)
 
-#=== Create and Deploy Nodes
+#=== Create and Deploy Instances
 
 def create_instance(name,**kwargs):
 	""" Create an EC2 instance """
