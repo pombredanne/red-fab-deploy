@@ -13,8 +13,8 @@ def provider_as_ec2(username='ubuntu',group='www-data'):
 	""" Set up a provider similar to Amazon EC2 """
 	user_create(username)
 	user_setup(username)
-	#group_user_add(group,username)
-	#grant_sudo_access(username)
+	group_user_add(group,username)
+	grant_sudo_access(username)
 
 @run_as('root')
 def generate_keys(keyname=None):

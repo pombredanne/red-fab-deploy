@@ -120,9 +120,17 @@ default key file, create and set up a user, add the user to the default security
 and then grant sudo access.  Finally, it will copy that key into the authorized_keys file for 
 each machine you've created the user on.
 
-		$ fab ssh_local_keygen:"rackspace.development"
-		$ fab set_hosts:development,root provider_as_ec2:username=ubuntu
-		$ fab set_hosts:development,root ssh_authorize:username=ubuntu,key=deploy/rackspace.development.pub
+	$ fab ssh_local_keygen:"development.key"
+	$ fab set_hosts:development,root provider_as_ec2:username=ubuntu
+	$ fab set_hosts:development,root ssh_authorize:username=ubuntu,key=deploy/development.key.pub
+
+If the user is already created and has sudo access you can try this.
+
+	$ fab ssh_local_keygen:"development.key"
+	$ fab set_hosts:development,otheruser ssh_authorize:username=ubuntu,key=deploy/development.key.pub
+	$ fab set_hosts:development,otheruser user_setup:otheruser
+	$ fab -i deploy/[your private SSH key here] set_hosts:production,otheruser go_deploy:production,tag,otheruser
+	$ fab -i deploy/[your private SSH key here] set_hosts:production,otheruser web_server_start
 
 ## Deploying on the Server
 
