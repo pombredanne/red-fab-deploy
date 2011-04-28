@@ -83,7 +83,7 @@ def go_setup(stage="development"):
 				else:
 					fabric.api.warn('%s is not an available service' % service)
 
-def go_deploy(stage="development", tagname="trunk"):
+def go_deploy(stage="development", tagname="trunk", username="ubuntu"):
 	"""
 	Deploy project and make active on any machine with server software
 	
@@ -99,19 +99,19 @@ def go_deploy(stage="development", tagname="trunk"):
 			service = instance_dict['services']
 			# If any of these services are listed then deploy the project
 			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
-				deploy_full(tagname,force=True)
+				deploy_full(tagname,force=True,username=username)
 	
-def deploy_full(tagname, force=False):
+def deploy_full(tagname, force=False, username="ubuntu"):
 	""" 
 	Deploys a project with a given tag name, and then makes
 	that deployment the active deployment on the server.
 	"""
-	deploy_project(tagname,force=force)
+	deploy_project(tagname,force=force,username=username)
 	make_active(tagname)
 
-def deploy_project(tagname, force=False):
+def deploy_project(tagname, force=False, username="ubuntu"):
 	""" Deploys project on prepared server. """
-	make_src_dir()
+	make_src_dir(username=username)
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
 	if fabric.contrib.files.exists(tag_dir):
 		if force:
@@ -136,12 +136,12 @@ def deploy_project(tagname, force=False):
 	virtualenv_create(dir=tag_dir)
 	pip_install(dir=tag_dir)
 	
-	fabric.api.sudo('chown -R ubuntu:ubuntu /srv')
+	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
 
-def make_src_dir():
+def make_src_dir(username='ubuntu'):
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """
 	fabric.api.sudo('mkdir -p %s' % (fabric.api.env.conf['SRC_DIR']))
-	fabric.api.sudo('chown -R ubuntu:ubuntu /srv')
+	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
 
 def make_active(tagname):
 	""" Make a tag at /srv/<project>/<tagname>  active """
