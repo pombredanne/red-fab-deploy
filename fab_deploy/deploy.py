@@ -62,11 +62,13 @@ def go_setup(stage="development"):
 	# Begin installing and setting up services
 	for name in PROVIDER['machines'][stage]:
 		node_data = PROVIDER['machines'][stage][name]
-		address = node_dict['public_ip'][0]
+		address = node_data['public_ip'][0]
 		if address == fabric.api.env.host:
 			set_hostname(name)
 			prepare_server()
-			install_services(node_dict['id'], name, address, stage, replication=replcation)
+			install_services(node_data['id'], name, address, stage, node_data, replication=replication)
+			print node_data
+			fabric.api.env.conf.extra_setup.get(node_data['server-type'], lambda: None)()
 
 def install_services(id, name, address, stage, node_data, **kwargs):
 	for service in node_data['services']:
@@ -90,7 +92,7 @@ def install_services(id, name, address, stage, node_data, **kwargs):
 		elif service in ['apache']:
 			fabric.api.warn(fabric.colors.yellow("%s is not yet available" % service))
 		else:
-			fabric.api.warn(fabric.colors.orange('%s is not an available service' % service))
+			fabric.api.warn(fabric.colors.yellow('%s is not an available service' % service))
 
 def go_deploy(stage="development", tagname="trunk"):
 	"""
@@ -156,6 +158,7 @@ def deploy_project(tagname, force=False, use_existing=False, with_full_virtualen
 			pip_install(dir = tag_dir)
 	
 	fabric.api.sudo('chown -R ubuntu:ubuntu /srv') 
+	#fabric.api.env.conf.post_activate.get(data['server-type'], lambda: None)() #TODO #XXX
 
 def make_src_dir():
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """

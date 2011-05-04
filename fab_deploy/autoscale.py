@@ -149,7 +149,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ''' Runs on web host (local) when failover occurs.  Accesses new master db host (run/sudo)'''
     
     ec2 = ec2_connection()
-    my_id = fabric.api.run('curl http://169.254.169.254/latest/meta-data/public-hostname/instance-id')
+    my_id = fabric.api.run('curl http://169.254.169.254/latest/meta-data/instance-id')
     autoscale_name, node_type = fabric.api.run('hostname').rsplit('-', 1)
     data = get_data()
 
@@ -293,7 +293,7 @@ def _go_setup_autoscale(stage = None):
     except ValueError:
         fabric.api.warn(fabric.colors.yellow('No rc.local file found for server type %s' % data['server_type']))
     
-    fabric.api.env.conf.extra_setup.get(data['server_type'], lambda: None)()
+    fabric.api.env.conf.extra_setup.get(data['server-type'], lambda: None)()
     
 def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     stage = stage or fabric.api.env.conf['stage']
@@ -307,7 +307,7 @@ def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     
     make_active(tagname)
  
-    fabric.api.env.conf.post_activate.get(data['server_type'], lambda: None)()
+    fabric.api.env.conf.post_activate.get(data['server-type'], lambda: None)()
     
     if data['server_type'] == 'web':
         web_server_restart()
