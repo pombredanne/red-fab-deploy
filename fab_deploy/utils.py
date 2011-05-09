@@ -76,7 +76,8 @@ def update_env():
 		DB            = 'mysql',       # Choose from 'mysql' or 'postgresql'
 		DB_PASSWD     = 'password',    # DB root user password, please replace
 		INSTANCE_NAME = 'projectname', # This should be the project name
-		PROVIDER      = 'ec2_us_east', # use 'rackspace','ec2_us_east', or 'ec2_us_west'
+		PROVIDER      = 'ec2_us_east', # use 'ec2_us_east' or 'ec2_us_west'
+		RSYNC_EXCLUDE = '',            # files to exclude
 		SERVER_TYPE   = 'nginx',       # Choose from 'apache' or 'nginx'
 		VCS           = 'svn',         # Currently only svn works
 		VCS_TAGS      = 'tags',        # Could be 'tags' or 'branches' in svn
@@ -114,10 +115,10 @@ def set_hosts(stage='development',username='ubuntu',machine=''):
 	if stage in PROVIDER['machines']:
 		for name in PROVIDER['machines'][stage]:
 			if (machine and machine == name) or not machine:
-				node_dict = PROVIDER['machines'][stage][name]
-				if 'public_ip' in node_dict:
-					public_ip = node_dict['public_ip']
-					services  = node_dict['services']
+				instance_dict = PROVIDER['machines'][stage][name]
+				if 'public_ip' in instance_dict:
+					public_ip = instance_dict['public_ip']
+					services  = instance_dict['services']
 					for ip in public_ip:
 						host = '%s@%s' % (username,ip)
 						# Set up databases first

@@ -4,7 +4,7 @@ import time, os
 import fabric.api, fabric.contrib.files
 
 from fab_deploy.package import package_install, package_add_repository, compile_and_install
-from fab_deploy.machine import get_provider_dict
+from fab_deploy.machine import get_provider_dict,get_connection
 from fab_deploy.system import service
 from fab_deploy.utils import append
 
@@ -51,7 +51,7 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 		package_install('mdadm', '--no-install-recommends')
 		
 		# Create two ebs volumes
-		import boto.ec2
+		import boto.ec2 #TODO: factor out ec2 stuffs
 		ec2 = boto.ec2.connect_to_region(config['location'][:-1],
 							aws_access_key_id = fabric.api.env.conf['AWS_ACCESS_KEY_ID'],
 							aws_secret_access_key = fabric.api.env.conf['AWS_SECRET_ACCESS_KEY'])

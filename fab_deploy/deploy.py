@@ -6,43 +6,36 @@ import fabric.colors
 import fabric.contrib
 
 from fab_deploy.db import *
-from fab_deploy.django_commands import syncdb
 from fab_deploy.file import link, unlink
-from fab_deploy.machine import (generate_config, get_provider_dict, stage_exists,
+from fab_deploy.machine import (get_provider_dict, stage_exists,
 	ec2_create_key, ec2_authorize_port,
-	deploy_nodes, update_nodes)
+	deploy_instances, update_instances)
 from fab_deploy.server import *
 from fab_deploy.system import get_hostname, set_hostname, prepare_server
-from fab_deploy.utils import detect_os, run_as
-from fab_deploy.user import provider_as_ec2, ssh_local_keygen
 from fab_deploy import vcs
-from fab_deploy.virtualenv import pip_install, virtualenv_create, virtualenv
+from fab_deploy.virtualenv import pip_install, virtualenv_create
 
-def go(stage="development", keyname='ec2.development'):
+def go(stage="development", key_name='ec2.development'):
 	""" 
 	A convenience method to prepare AWS servers.
 	
-	Use this to create keys, authorize ports, and deploy nodes.
+	Use this to create keys, authorize ports, and deploy instances.
 	DO NOT use this step if you've already created keys and opened
 	ports on your ec2 instance.
 	"""
 
-	# Setup keys and authorize ports
+	# Get the provider and key_name
 	provider = fabric.api.env.conf['PROVIDER']
-	keyname = '%s.%s' % (provider,keyname)
-	if 'ec2' in provider:
-		ec2_create_key(keyname)
-		ec2_authorize_port('default','tcp','22')
-		ec2_authorize_port('default','tcp','80')
+	key_name = '%s.%s' % (provider,key_name)
+	
+	# Setup keys and authorize ports
+	ec2_create_key(key_name)
+	ec2_authorize_port('default','tcp','22')
+	ec2_authorize_port('default','tcp','80')
 
-		# Deploy the nodes for the given stage
-		deploy_nodes(stage,keyname)
-	elif 'rackspace' == provider:
-		deploy_nodes(stage)
-
-	fabric.api.warn(fabric.colors.yellow('Wait 60 seconds for nodes to deploy'))
-	time.sleep(60)
-	update_nodes()
+	# Deploy the instances for the given stage
+	deploy_instances(stage,key_name)
+	update_instances()
 
 def go_setup(stage="development"):
 	"""
@@ -94,7 +87,7 @@ def install_services(id, name, address, stage, node_data, **kwargs):
 		else:
 			fabric.api.warn(fabric.colors.yellow('%s is not an available service' % service))
 
-def go_deploy(stage="development", tagname="trunk"):
+def go_deploy(stage="development", tagname="trunk", username="ubuntu"):
 	"""
 	Deploy project and make active on any machine with server software
 	
@@ -103,38 +96,26 @@ def go_deploy(stage="development", tagname="trunk"):
 	stage_exists(stage)
 	PROVIDER = get_provider_dict()
 	for name in PROVIDER['machines'][stage]:
-		node_dict = PROVIDER['machines'][stage][name]
-		host = node_dict['public_ip'][0]
+		instance_dict = PROVIDER['machines'][stage][name]
+		host = instance_dict['public_ip'][0]
 
 		if host == fabric.api.env.host:
-			service = node_dict['services']
+			service = instance_dict['services']
 			# If any of these services are listed then deploy the project
-			if list(set(['nginx','uwsgi','apache']) & set(node_dict['services'])):
-				deploy_full(tagname,force=True)
+			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
+				deploy_full(tagname,force=True,username=username)
 	
-				# Link the hostname to the <stage>.py file
-				# Commented out as the environment-specific settings are called
-				# settings/staging.py or settings/production.py, and if someone
-				# really needs host-specific settings (e.g. two different files
-				# for web1 and web2), then he would write them by hand anyway
-				# hostname = get_hostname()
-				# host_dir = os.path.join(fabric.api.env.conf['SRC_DIR'],tagname,'project/settings')
-				# if not fabric.contrib.files.exists(os.path.join(host_dir,'%s.py' % hostname)):
-				# 	link(os.path.join(host_dir,'%s.py' % stage), 
-				# 		dest=os.path.join(host_dir,'%s.py' % hostname),
-				# 		do_unlink=True, silent=True)
-				
-def deploy_full(tagname, force=False):
+def deploy_full(tagname, force=False, username="ubuntu"):
 	""" 
 	Deploys a project with a given tag name, and then makes
 	that deployment the active deployment on the server.
 	"""
-	deploy_project(tagname,force=force)
+	deploy_project(tagname,force=force,username=username)
 	make_active(tagname)
 
-def deploy_project(tagname, force=False, use_existing=False, with_full_virtualenv=True):
+def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, with_full_virtualenv=True):
 	""" Deploys project on prepared server. """
-	make_src_dir()
+	make_src_dir(username=username)
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
 	if fabric.contrib.files.exists(tag_dir):
 		if force:
@@ -157,13 +138,13 @@ def deploy_project(tagname, force=False, use_existing=False, with_full_virtualen
 		if with_full_virtualenv:
 			pip_install(dir = tag_dir)
 	
-	fabric.api.sudo('chown -R ubuntu:ubuntu /srv') 
+	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
 	#fabric.api.env.conf.post_activate.get(data['server-type'], lambda: None)() #TODO #XXX
 
-def make_src_dir():
+def make_src_dir(username='ubuntu'):
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """
 	fabric.api.sudo('mkdir -p %s' % (fabric.api.env.conf['SRC_DIR']))
-	fabric.api.sudo('chown -R ubuntu:ubuntu /srv')
+	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
 
 def make_active(tagname):
 	""" Make a tag at /srv/<project>/<tagname>  active """
@@ -184,16 +165,4 @@ def undeploy():
 
 	web_server_stop()
 	unlink('/srv/active')
-
-#	@run_as('root')
-#	def wipe_web():
-#		fabric.api.run('rm -f /etc/nginx/sites-enabled/%s' % fabric.api.env.conf['INSTANCE_NAME'])
-#		fabric.api.run('a2dissite %s' % fabric.api.env.conf['INSTANCE_NAME'])
-#		fabric.api.run('invoke-rc.d nginx reload')
-#		fabric.api.run('invoke-rc.d apache2 reload')
-#
-#	wipe_web()
-#	fabric.api.run('rm -rf %s' % fabric.api.env.conf['SRC_DIR'])
-#	for folder in ['bin', 'include', 'lib', 'src']:
-#		fabric.api.run('rm -rf %s/%s' % (fabric.api.env.conf['ENV_DIR'], folder))
 

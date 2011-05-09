@@ -2,3 +2,5 @@
 *.swp
 Python
 *.egg-info
+.project
+.pydevproject

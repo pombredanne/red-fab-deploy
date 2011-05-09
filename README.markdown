@@ -11,20 +11,15 @@ found in that tool.
 This project was inspired by `django-fab-deploy <http://packages.python.org/django-fab-deploy>`
 and `cuisine <https://github.com/ff0000/cuisine/>`.
 
-These tools are being geared towards deploying on Amazon EC2, however 
-there are steps to set up Rackspace and other hosts to work with these tools.
+These tools are being geared towards deploying on Amazon EC2.
 
 ## Installation
 
 IMPORTANT: red-fab-deploy will only work if you install the following packages:
     
 	$ pip install -e git+git://github.com/bitprophet/fabric.git#egg=fabric
-	$ pip install -e git+git://github.com/apache/libcloud.git@trunk#egg=libcloud
 	$ pip install boto
 	$ pip install -e git+git://github.com/ff0000/red-fab-deploy.git#egg=red-fab-deploy
-
-Be aware that the dependencies are Fabric>=1.0 and apache-libcloud>=0.4.3.  These
-packages are at the cutting edge and without them you will see things break.
 
 ## Important Notes
 
@@ -52,18 +47,11 @@ The first thing you need to do is set up your fabfile.  This project includes an
 that is necessary to get started called fabfile_example.py.  You can take a look at it and 
 replace the default values with your actual values.
 
-Importantly there are different settings for setting up Amazon EC2 instances or Rackspace
-Cloud instances.  These settings are listed below:
+Importantly there are important settings for Amazon EC2 instances:
 
 	PROVIDER = 'amazon'
 	AWS_ACCESS_KEY_ID     = 'yourawsaccesskeyid',
 	AWS_SECRET_ACCESS_KEY = 'yourawssecretaccesskey',
-
-Or the following settings for Rackspace:
-
-	PROVIDER = 'rackspace'
-	RACKSPACE_USER = 'yourrackspaceclouduser',
-	RACKSPACE_KEY  = 'yourrackspacecloudkey',
 
 As an example here is the env.conf dictionary for amazon that you'd find in your file:
 
@@ -87,34 +75,23 @@ cloud servers and project deployment.  Follow these steps:
 1. Ensure you have correctly set up your fabfile using the instructions above.
 
 2. To begin with the set up of your cloud account you must run the following commands. On
-AWS only this will create a default key file and authorize tcp ports 22 and 80 for use.  With
-Rackspace setup the key file will not be created so you must follow instructions in step 4.
+AWS this will create a default key file and authorize tcp ports 22 and 80 for use. 
 
 		$ fab generate_config
 		$ fab go:development
-		$ fab update_nodes # might need to wait a minute and run this
+		$ fab update_instances # might need to wait a minute and run this
 
 3. You must wait until all your instances have spawned before going further.  This could take 
-up to 5 minutes.  You must also wait until you have the root password if you are using Rackspace,
-which usually comes in an email a few minutes later.
+up to 5 minutes.
 
-4. If you are running Rackspace you must run this next set of commands.  This will create a 
-default key file, create and set up a user, add the user to the default security group, 
-and then grant sudo access.  Finally, it will copy that key into the authorized_keys file for 
-each machine you've created the user on.
-
-		$ fab ssh_local_keygen:"rackspace.development"
-		$ fab set_hosts:development,root provider_as_ec2:username=ubuntu
-		$ fab set_hosts:development,root ssh_authorize:username=ubuntu,key=deploy/rackspace.development.pub
-
-5. To install all the correct software on your new development node run the following:
+4. To install all the correct software on your new development instance run the following:
 
 		$ fab -i deploy/[your private SSH key here] set_hosts:development go_setup:development
 
-	This will grab all the development node ip addresses, set them as hosts, and then run
+	This will grab all the development instance ip addresses, set them as hosts, and then run
 	a software setup package on each of the servers based on the generated config file.
 
-6. Next you want to deploy to the development server by running the following:
+5. Next you want to deploy to the development server by running the following:
 
 		$ fab -i deploy/[your private SSH key here] set_hosts:development go_deploy:development,tag
 
@@ -127,16 +104,33 @@ Production is almost identical to development, except for the following:
 
 	$ fab generate_config # Do not overwrite an earlier file
 	$ fab go:production
-	$ fab update_nodes # might need to wait a minute and run this
-	$ fab ssh_local_keygen:"rackspace.production"
-	$ fab set_hosts:production,root provider_as_ec2:username=ubuntu
-	$ fab set_hosts:production,root ssh_authorize:username=ubuntu,key=deploy/rackspace.production.pub
+	$ fab update_instances # might need to wait a minute and run this
 	$ fab -i deploy/[your private SSH key here] set_hosts:production go_setup:production
 	$ fab -i deploy/[your private SSH key here] set_hosts:production go_deploy:production,tag
 
 NOTE: If you already have generated a config for deployment DO NOT generate another config file.
 This is very important as you may overwrite the original and lose the information you have inside
 of it.  Furthermore, you'll want to check in the config file into your repository.
+
+### Tools
+
+If you are deploying on another host such as Rackspace you must run this next set of commands. 
+ This will create a 
+default key file, create and set up a user, add the user to the default security group, 
+and then grant sudo access.  Finally, it will copy that key into the authorized_keys file for 
+each machine you've created the user on.
+
+	$ fab ssh_local_keygen:"development.key"
+	$ fab set_hosts:development,root provider_as_ec2:username=ubuntu
+	$ fab set_hosts:development,root ssh_authorize:username=ubuntu,key=deploy/development.key.pub
+
+If the user is already created and has sudo access you can try this.
+
+	$ fab ssh_local_keygen:"development.key"
+	$ fab set_hosts:development,otheruser ssh_authorize:username=ubuntu,key=deploy/development.key.pub
+	$ fab set_hosts:development,otheruser user_setup:otheruser
+	$ fab -i deploy/[your private SSH key here] set_hosts:production,otheruser go_deploy:production,tag,otheruser
+	$ fab -i deploy/[your private SSH key here] set_hosts:production,otheruser web_server_start
 
 ## Deploying on the Server
 

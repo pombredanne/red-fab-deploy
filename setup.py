@@ -58,7 +58,7 @@ setup(
     description = """ Code deployment tool """,
 
     long_description = open('README.markdown').read(),
-    install_requires = parse_requirements('requirements.txt'),#['fabric', 'apache-libcloud'],
+    install_requires = parse_requirements('requirements.txt'),
 	dependency_links = parse_dependency_links('requirements.txt'),
 
     classifiers = (

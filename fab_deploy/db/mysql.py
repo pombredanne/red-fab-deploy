@@ -99,7 +99,7 @@ def mysql_setup(**kwargs):
 	# Update the bind-address to the internal ip
 	mysql_conf = '/etc/mysql/my.cnf'
 	before = "bind-address[[:space:]]*=[[:space:]]*127.0.0.1"
-	after  = "bind-address = %s" % private_ip
+	after  = "bind-address = 0.0.0.0"# "bind-address = %s" % private_ip
 	if not fabric.contrib.files.contains(mysql_conf, after):
 		fabric.contrib.files.sed(mysql_conf,before,after,
 			use_sudo=True, backup='.bkp')

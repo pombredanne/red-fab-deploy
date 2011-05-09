@@ -8,7 +8,7 @@ from fab_deploy.file import file_attribs
 from fab_deploy.machine import get_provider_dict
 from fab_deploy.utils import run_as
 
-@run_as('root')
+@run_as('tbwaadmin')
 def provider_as_ec2(username='ubuntu',group='www-data'):
 	""" Set up a provider similar to Amazon EC2 """
 	user_create(username)
