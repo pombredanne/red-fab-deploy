@@ -1,5 +1,7 @@
 import fabric.api
 
+from fab_deploy.package import package_install
+
 def _redis_is_installed():
 	with fabric.api.settings(fabric.api.hide('running','stdout','stderr'), warn_only=True):
 		output = fabric.api.run('dpkg-query --show redis-server')
