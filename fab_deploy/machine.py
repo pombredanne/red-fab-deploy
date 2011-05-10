@@ -365,7 +365,7 @@ def create_instance(name,**kwargs):
 						)
 		instance	= reservation.instances[0]
 
-		instance.add_tag('name', name)
+		instance.add_tag('Name', name)
 		instance.add_tag('Server Type', kwargs.get('server_type', ''))
 		instance.add_tag('Stage', kwargs.get('stage', ''))
 

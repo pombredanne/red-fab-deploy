@@ -43,10 +43,7 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 	output = fabric.api.run('pg_lsclusters -h')
 	version, cluster = output.split()[:2]
 	
-	if 'ec2' not in fabric.api.env.conf['PROVIDER']:
-		fabric.api.warn(fabric.colors.yellow('PostgreSQL advanced drive setup (RAID 0 + XFS) is not currently supported on non-ec2 instances'))
-
-	if 'ec2' in fabric.api.env.conf['PROVIDER'] and not options.get('simple'):
+	if not options.get('simple'):
 		package_install('xfsprogs')
 		package_install('mdadm', '--no-install-recommends')
 		

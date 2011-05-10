@@ -3,9 +3,10 @@ from boto.ec2.autoscale import AutoScaleConnection, AutoScalingGroup, LaunchConf
 #from boto.ec2.autoscale.policy import AdjustmentType, Alarm, ScalingPolicy
 #from boto.ec2.cloudwatch.alarm import MetricAlarm
 from boto.ec2.elb import ELBConnection, HealthCheck
-from boto.exception import BotoServerError
+from boto.exception import BotoServerError, EC2ResponseError
 #from boto.regioninfo import RegionInfo
 from fab_deploy.aws import *
+import fab_deploy.aws as aws
 from fab_deploy.db.postgresql import *
 from fab_deploy.deploy import *
 from fab_deploy.machine import *
@@ -17,6 +18,7 @@ from time import sleep
 import fabric.api
 import fabric.colors
 import os
+import fabric.contrib.files
 
 def get_data():
     return {'stage': fabric.api.sudo('cat /etc/red_fab_deploy_stage'),
@@ -178,8 +180,12 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
     conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)
 
 def go_prepare_autoscale(stage='development'):
-    ec2_authorize_port('default','tcp','22')
-    ec2_authorize_port('default','tcp','80')
+    try:
+        ec2_authorize_port('default','tcp','22')
+        ec2_authorize_port('default','tcp','80')
+    except EC2ResponseError, err:
+        if 'InvalidPermission.Duplicate' not in str(err):
+            raise
 
     fabric.api.env.conf['stage'] = stage
     ec2 = ec2_connection()
@@ -189,17 +195,17 @@ def go_prepare_autoscale(stage='development'):
     needsips = []
     for name, values in config.get('autoscale', {}).get(stage, {}).iteritems():
         if values['server-type'] == 'db': # Do the master first
-            node = create_node('%s-master' % name, keyname = config['key'],
-                                       image = get_node_image(values['initial_image']),
-                                       size = get_node_size(values['size']), location = config['location'], stage = stage,
+            node = create_instance('%s-master' % name, key_name = config['key'],
+                                       image_id = values['initial_image'],
+                                       size = values['size'], location = config['location'], stage = stage,
                                        server_type = values['server-type'])
             nodes.append(node)
             needsips.append([name, values, node])
             values['nodes'] = dict(values.get('nodes', {}), master = node.id)
 
-        node = create_node('%s-template' % name, keyname = config['key'],
-                           image = get_node_image(values['initial_image']),
-                           size = get_node_size(values['size']), location = config['location'], stage = stage,
+        node = create_instance('%s-template' % name, key_name = config['key'],
+                           image_id = values['initial_image'],
+                           size = values['size'], location = config['location'], stage = stage,
                            server_type = values['server-type'])
 
         nodes.append(node)
@@ -207,7 +213,7 @@ def go_prepare_autoscale(stage='development'):
             
         
     print fabric.colors.green('Waiting for nodes to start...')
-    instances = [r.instances[0] for r in ec2.get_all_instances([n.name for n in nodes])]
+    instances = nodes #instances = [r.instances[0] for r in ec2.get_all_instances([n.name for n in nodes])]
     
     while any(instance.update() != 'running' for instance in instances):
         sleep(1)
@@ -242,7 +248,7 @@ def go_setup_autoscale_masters(stage = None):
     if node_type == 'master':
         _go_setup_autoscale(stage)
         
-def go_setup_autoscale(stage = None):
+def go_setup_autoscale_templates(stage = None):
     my_id = fabric.api.run('curl http://169.254.169.254/latest/meta-data/instance-id')
     tags = ec2_instance(my_id).tags
     autoscale_name, node_type = tags[u'Name'].rsplit('-', 1)
@@ -293,7 +299,7 @@ def _go_setup_autoscale(stage = None):
     except ValueError:
         fabric.api.warn(fabric.colors.yellow('No rc.local file found for server type %s' % data['server_type']))
     
-    fabric.api.env.conf.extra_setup.get(data['server-type'], lambda: None)()
+    fabric.api.env.conf.extra_setup.get(data['server_type'], lambda: None)()
     
 def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     stage = stage or fabric.api.env.conf['stage']
@@ -307,7 +313,7 @@ def go_deploy_autoscale(tagname, stage = None, force=False, use_existing=False):
     
     make_active(tagname)
  
-    fabric.api.env.conf.post_activate.get(data['server-type'], lambda: None)()
+    fabric.api.env.conf.post_activate.get(data['server_type'], lambda: None)()
     
     if data['server_type'] == 'web':
         web_server_restart()
@@ -320,7 +326,7 @@ def go_save_templates(stage = None):
     autoscale_name, node_type = fabric.api.run('hostname').rsplit('-', 1)
     if node_type == 'template':
         config = get_provider_dict()
-        ami = save_as_ami(autoscale_name, deregister = config['autoscale'][stage][autoscale_name].get('image'))
+        ami = aws.save_as_ami(autoscale_name, deregister = config['autoscale'][stage][autoscale_name].get('image'))
         config['autoscale'][stage][autoscale_name]['image'] = ami
         write_conf(config)
 
@@ -470,8 +476,8 @@ def go_launch_autoscale(stage = None, force=False, ignore=False):
                 --threshold %(min_cpu)s \
                 --alarm-actions %(scale_down_policy)s''' % data)
         
-        
-        
+        if not values.get('enabled',  True):
+            fabric.api.local('as-suspend-processes %(name)s  --region %(region)s' % data)
         
 #        ag = AutoScalingGroup(connection = conn,
 #                              group_name = name,
@@ -541,13 +547,13 @@ def go_launch_autoscale(stage = None, force=False, ignore=False):
 #            print fabric.colors.green('  Trigger attached.')
 
 def update_fab_deploy(fabfile=None):
-    with fabric.api.cd('/srv/active/'):
-        fabric.api.run('ls env || virtualenv env')
-        with virtualenv():
-            fabric.api.run('pip install -e git+git://github.com/apache/libcloud.git#egg=apache-libcloud') #HACK
-            fabric.api.run('pip install -e git+git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
-    if fabfile:
-        fabric.api.put(fabfile, '/srv/active/fabfile.py')
+    if fabric.contrib.files.exists('/srv/active'):
+        with fabric.api.cd('/srv/active/'):
+            fabric.api.run('ls env || virtualenv env')
+            with virtualenv():
+                fabric.api.run('pip install -e git+git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
+        if fabfile:
+            fabric.api.put(fabfile, '/srv/active/fabfile.py')
 
 @fabric.api.runs_once  
 def list_hosts():
