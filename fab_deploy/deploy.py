@@ -6,7 +6,7 @@ import fabric.colors
 import fabric.contrib
 
 from fab_deploy.db import *
-from fab_deploy.file import link, unlink
+from fab_deploy.file import link_exists, link, unlink
 from fab_deploy.machine import (get_provider_dict, stage_exists,
 	ec2_create_key, ec2_authorize_port,
 	deploy_instances, update_instances)
@@ -150,8 +150,15 @@ def make_active(tagname):
 
 def check_active():
 	""" Abort if there is no active deployment """
-	if not link_exists('/srv/active/'):
+	if not link_exists('/srv/active'):
 		fabric.api.abort(fabric.colors.red('There is no active deployment'))
+
+def link_host(hostfile):
+	""" Link the hostname to the host file """
+	check_active()
+	link(os.path.join('/srv/active/project/hosts', hostfile),
+		 os.path.join('/srv/active/project/hosts', '%s.py' % get_hostname()), 
+		 do_unlink=True, silent=True)
 
 def undeploy():
 	""" Shuts site down. This command doesn't clean everything, e.g.
