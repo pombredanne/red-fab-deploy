@@ -17,10 +17,6 @@ def my_site():
 		AWS_ACCESS_KEY_ID     = '',
 		AWS_SECRET_ACCESS_KEY = '',
 		
-		#PROVIDER = 'rackspace',
-		#RACKSPACE_USER = '',     
-		#RACKSPACE_KEY  = '',
-		
 		CONF_FILE = os.path.join(os.getcwd(),'fabric.conf'),
 		INSTANCE_NAME = 'projectname', # Recommend no underscore characters
 		REPO = 'http://some.repo.com/projectname/',
