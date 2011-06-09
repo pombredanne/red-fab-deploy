@@ -13,7 +13,7 @@ def update_fab_deploy(fabfile = None):
         with cd('/srv/active/'):
             run('ls env || virtualenv env')
             with virtualenv():
-                run('pip install -e git+git://github.com/ff0000/red-fab-deploy.git@autoscaling#egg=fab_deploy')
+                run('pip install -e git+git://github.com/daveisaacson/red-fab-deploy.git#egg=fab_deploy')
         if fabfile:
             put(fabfile, '/srv/active/fabfile.py')
 
