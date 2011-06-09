@@ -83,11 +83,11 @@ def go_setup(stage="development"):
 				else:
 					fabric.api.warn('%s is not an available service' % service)
 
-def go_deploy(stage="development", tagname="trunk", username="ubuntu"):
+def go_deploy(stage="development", tagname="trunk", username="ubuntu", full=True):
 	"""
 	Deploy project and make active on any machine with server software
 	
-    $ fab -i deploy/[your private SSH key here] set_hosts go_deploy
+	$ fab -i deploy/[your private SSH key here] set_hosts go_deploy
 	"""
 	stage_exists(stage)
 	PROVIDER = get_provider_dict()
@@ -98,8 +98,12 @@ def go_deploy(stage="development", tagname="trunk", username="ubuntu"):
 		if host == fabric.api.env.host:
 			service = instance_dict['services']
 			# If any of these services are listed then deploy the project
+
 			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
-				deploy_full(tagname,force=True,username=username)
+				if full:
+					deploy_full(tagname,force=True,username=username)
+				else:
+					deploy_project(tagname,force=True,username=username)
 	
 def deploy_full(tagname, force=False, username="ubuntu"):
 	""" 
