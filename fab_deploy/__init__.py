@@ -51,3 +51,4 @@ from fab_deploy.db import *
 #--- Version Control
 from fab_deploy.vcs import *
 
+from fab_deploy.conf import *

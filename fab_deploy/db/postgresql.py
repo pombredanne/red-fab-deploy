@@ -41,9 +41,13 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 	
 	# Figure out cluster name
 	output = fabric.api.run('pg_lsclusters -h')
-	version, cluster = output.split()[:2]
+	if output:
+		version, cluster = output.split()[:2]
+	else:
+		version = fabric.api.run('pg_dump --version').split()[-1]
+		cluster = 'main'
 	
-	if not options.get('simple'):
+	if options.get('ebs_size'):
 		package_install('xfsprogs')
 		package_install('mdadm', '--no-install-recommends')
 		
@@ -56,11 +60,11 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 		tag1 = u'%s-1' % name
 		tag2 = u'%s-2' % name
 		if not any(vol for vol in ec2.get_all_volumes() if vol.tags.get(u'Name') == tag1):
-			volume1 = ec2.create_volume(options.get('max-size', 10)/2, config['location'])
+			volume1 = ec2.create_volume(options.get('ebs_size', 10)/2, config['location'])
 			volume1.add_tag('Name', tag1)
 			volume1.attach(id, '/dev/sdf')
 		if not any(vol for vol in ec2.get_all_volumes() if vol.tags.get(u'Name') == tag2):
-			volume2 = ec2.create_volume(options.get('max-size', 10)/2, config['location'])
+			volume2 = ec2.create_volume(options.get('ebs_size', 10)/2, config['location'])
 			volume2.add_tag('Name', tag2)
 			volume2.attach(id, '/dev/sdg')
 		

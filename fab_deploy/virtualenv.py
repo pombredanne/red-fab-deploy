@@ -13,7 +13,7 @@ def virtualenv_create(dir='/srv/active/',site_packages=True):
 		fabric.api.run('virtualenv %s' % os.path.join(dir,'env/'))
 	else:
 		fabric.api.run('virtualenv --no-site-packages %s' % os.path.join(dir,'env/'))
-	link('env/bin/activate',do_unlink=True,silent=True)
+	#link('env/bin/activate',do_unlink=True,silent=True)
 
 def virtualenv(dir='/srv/active/'):
 	"""

@@ -42,8 +42,13 @@ def uwsgi_setup(stage=''):
 		fabric.api.sudo('mv %s %s.bkp' % (uwsgi_file, uwsgi_file))
 	if stage:
 		stage = '.%s' % stage
-	link('/srv/active/deploy/uwsgi%s.ini' % stage, dest=uwsgi_file, 
-		use_sudo=True, do_unlink=True, silent=True)
+	if fabric.contrib.files.exists('/srv/active/deploy/uwsgi%s.ini' % stage):
+		link('/srv/active/deploy/uwsgi%s.ini' % stage, dest=uwsgi_file, 
+			use_sudo=True, do_unlink=True, silent=True)
+		# PLEASE DO NOT INTRODUCE BACKWARDS INCOMPATIBILITIES!
+	else:
+		link('/srv/active/deploy/uwsgi.ini', dest=uwsgi_file, 
+			use_sudo=True, do_unlink=True, silent=True)
 
 	# Log File
 	fabric.api.sudo('mkdir -p /var/log/uwsgi')

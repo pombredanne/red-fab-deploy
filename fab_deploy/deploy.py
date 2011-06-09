@@ -1,19 +1,19 @@
-import os.path
-import time
-
+from fab_deploy import vcs
+from fab_deploy.conf import fab_config
+from fab_deploy.db import *
+from fab_deploy.file import link, unlink, link_exists
+from fab_deploy.machine import get_provider_dict, stage_exists, ec2_create_key, ec2_authorize_port, deploy_instances, update_instances
+from fab_deploy.server import *
+from fab_deploy.server.s3fs import s3fs_install, s3fs_setup
+from fab_deploy.system import get_hostname, set_hostname, prepare_server
+from fab_deploy.virtualenv import pip_install, virtualenv_create
+from tempfile import mkdtemp
 import fabric.api
 import fabric.colors
 import fabric.contrib
+import os.path
+import time
 
-from fab_deploy.db import *
-from fab_deploy.file import link, unlink
-from fab_deploy.machine import (get_provider_dict, stage_exists,
-	ec2_create_key, ec2_authorize_port,
-	deploy_instances, update_instances)
-from fab_deploy.server import *
-from fab_deploy.system import get_hostname, set_hostname, prepare_server
-from fab_deploy import vcs
-from fab_deploy.virtualenv import pip_install, virtualenv_create
 
 def go(stage="development", key_name='ec2.development'):
 	""" 
@@ -51,7 +51,6 @@ def go_setup(stage="development"):
 	for db in ['mysql','postgresql','postgresql-client']:
 		slave.append(any(['slave' in PROVIDER['machines'][stage][name].get('services',{}).get(db,{}) for name in PROVIDER['machines'][stage]]))
 	replication = any(slave)
-	
 	# Begin installing and setting up services
 	for name in PROVIDER['machines'][stage]:
 		node_data = PROVIDER['machines'][stage][name]
@@ -60,10 +59,11 @@ def go_setup(stage="development"):
 			set_hostname(name)
 			prepare_server()
 			install_services(node_data['id'], name, address, stage, node_data, replication=replication)
-			print node_data
-			fabric.api.env.conf.extra_setup.get(node_data['server-type'], lambda: None)()
+			fab_config['post_setup'].get(node_data['server-type'], lambda: None)()
 
 def install_services(id, name, address, stage, node_data, **kwargs):
+	''' Install all services '''
+	
 	for service in node_data['services']:
 		settings = node_data['services'][service]
 		if service == 'nginx':
@@ -82,12 +82,15 @@ def install_services(id, name, address, stage, node_data, **kwargs):
 			postgresql_client_install(id, name, address, stage, settings, **kwargs)
 		elif service == 'pgpool':
 			pgpool_install(id, name, address, stage, settings, **kwargs)
+		elif service == 's3fs':
+			s3fs_install(id, name, address, stage, settings, **kwargs)
+			s3fs_setup(id, name, address, stage, settings, **kwargs)
 		elif service in ['apache']:
 			fabric.api.warn(fabric.colors.yellow("%s is not yet available" % service))
 		else:
 			fabric.api.warn(fabric.colors.yellow('%s is not an available service' % service))
 
-def go_deploy(stage="development", tagname="trunk", username="ubuntu"):
+def go_deploy(stage="development", tagname="trunk", username="ubuntu", use_existing=False):
 	"""
 	Deploy project and make active on any machine with server software
 	
@@ -103,14 +106,14 @@ def go_deploy(stage="development", tagname="trunk", username="ubuntu"):
 			service = instance_dict['services']
 			# If any of these services are listed then deploy the project
 			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
-				deploy_full(tagname,force=True,username=username)
+				deploy_full(tagname,force=True,username=username, use_existing=use_existing)
 	
-def deploy_full(tagname, force=False, username="ubuntu"):
+def deploy_full(tagname, force=False, username="ubuntu", use_existing=False):
 	""" 
 	Deploys a project with a given tag name, and then makes
 	that deployment the active deployment on the server.
 	"""
-	deploy_project(tagname,force=force,username=username)
+	deploy_project(tagname,force=force,username=username,use_existing=use_existing)
 	make_active(tagname)
 
 def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, with_full_virtualenv=True):
@@ -123,20 +126,20 @@ def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, 
 			fabric.api.run('rm -rf %s' % tag_dir)
 		elif not use_existing:
 			fabric.api.abort(fabric.colors.red('Tagged directory already exists: %s' % tagname))
-	else:
-		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
-		with fabric.api.lcd('/tmp'):
-			vcs.export(tagname, local=True)
+	#fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+	tempdir = mkdtemp()
+	with fabric.api.lcd(mkdtemp()):
+		vcs.export(tagname, local=True)
 		fabric.contrib.project.rsync_project(
-			local_dir = os.path.join('/tmp', tagname),
+			local_dir = tagname,
 			remote_dir = fabric.api.env.conf['SRC_DIR'],
 			exclude = fabric.api.env.conf['RSYNC_EXCLUDE'], 
 			extra_opts='--links --perms')
-		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+		fabric.api.local('rm -rf %s' % os.path.join(tagname))
 
-		virtualenv_create(dir = tag_dir)
-		if with_full_virtualenv:
-			pip_install(dir = tag_dir)
+	virtualenv_create(dir = tag_dir)
+	if with_full_virtualenv:
+		pip_install(dir = tag_dir)
 	
 	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
 	#fabric.api.env.conf.post_activate.get(data['server-type'], lambda: None)() #TODO #XXX

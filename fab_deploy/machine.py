@@ -4,181 +4,22 @@ Ubuntu image sizes:
 	http://uec-images.ubuntu.com/lucid/current/
 """
 
+from boto import ec2
+from fab_deploy.constants import *
+from fab_deploy.conf import *
+from fab_deploy.package import package_install, package_update
 from pprint import pprint
-import os
-import time
-
+import boto
+import boto.ec2
+import boto.ec2.autoscale
 import fabric.api
+from fabric.api import env
 import fabric.colors
 import fabric.contrib
-
-import boto, boto.ec2, boto.ec2.autoscale
-from boto import ec2
+import os
 import simplejson
+import time
 
-from fab_deploy.package import package_install, package_update
-
-#=== CONF Defaults
-SERVER = {'nginx':{},'uwsgi':{}}
-DB	 = {
-	'mysql': {
-		'name'	 :'',	 # not default
-		'user'	 :'',	 # not root
-		'password' :'',	 # not root
-		#'slave'	:'db1',  # reference to master database
-	},
-}
-
-#=== Cloud Defaults #TODO: separate defaults file
-EC2_IMAGE = 'ami-a6f504cf' # Ubuntu 10.10, 32-bit instance
-EC2_MACHINES = {
-	'development' : {
-		'dev1' : {
-			'image'	  : EC2_IMAGE,
-			'placement'  : 'us-east-1b',
-			'services'   : dict(SERVER, **DB),
-			'size'	   : 'm1.small',},
-	},
-	'production' : {
-		# Use the Amazon Elastic Load Balancer
-		'web1' : {
-			'image'	  : EC2_IMAGE,
-			'placement'  : 'us-east-1a',
-			'services': SERVER,
-			'size':'m1.small',},
-		'web2' : {
-			'image'	  : EC2_IMAGE,
-			'placement'  : 'us-east-1b',
-			'services': SERVER,
-			'size':'m1.small',},
-		'dbs1' : {
-			'image'	  : EC2_IMAGE,
-			'placement'  : 'us-east-1c',
-			'services': DB,
-			'size':'m1.small',},
-		'dbs2' : {
-			'image'	  : EC2_IMAGE,
-			'placement'  : 'us-east-1d',
-			'services': {'slave':'dbs1'},
-			'size':'m1.small',},
-	},
-}
-
-PROVIDER_DICT = {
-	'ec2_us_west': {
-		'machines'   : EC2_MACHINES,
-		'region_id'  : 'us-west-1',
-	},
-	'ec2_us_east': {
-		'machines'   : EC2_MACHINES,
-		'region_id'  : 'us-east-1',
-	},
-}
-
-#=== EC2 Instance Types
-EC2_INSTANCE_TYPES = {
-	't1.micro': {
-		'id': 't1.micro',
-		'name': 'Micro Instance',
-		'ram': 613,
-		'disk': 15,
-		'bandwidth': None
-	},
-	'm1.small': {
-		'id': 'm1.small',
-		'name': 'Small Instance',
-		'ram': 1740,
-		'disk': 160,
-		'bandwidth': None
-	},
-	'm1.large': {
-		'id': 'm1.large',
-		'name': 'Large Instance',
-		'ram': 7680,
-		'disk': 850,
-		'bandwidth': None
-	},
-	'm1.xlarge': {
-		'id': 'm1.xlarge',
-		'name': 'Extra Large Instance',
-		'ram': 15360,
-		'disk': 1690,
-		'bandwidth': None
-	},
-	'c1.medium': {
-		'id': 'c1.medium',
-		'name': 'High-CPU Medium Instance',
-		'ram': 1740,
-		'disk': 350,
-		'bandwidth': None
-	},
-	'c1.xlarge': {
-		'id': 'c1.xlarge',
-		'name': 'High-CPU Extra Large Instance',
-		'ram': 7680,
-		'disk': 1690,
-		'bandwidth': None
-	},
-	'm2.xlarge': {
-		'id': 'm2.xlarge',
-		'name': 'High-Memory Extra Large Instance',
-		'ram': 17510,
-		'disk': 420,
-		'bandwidth': None
-	},
-	'm2.2xlarge': {
-		'id': 'm2.2xlarge',
-		'name': 'High-Memory Double Extra Large Instance',
-		'ram': 35021,
-		'disk': 850,
-		'bandwidth': None
-	},
-	'm2.4xlarge': {
-		'id': 'm2.4xlarge',
-		'name': 'High-Memory Quadruple Extra Large Instance',
-		'ram': 70042,
-		'disk': 1690,
-		'bandwidth': None
-	},
-	'cg1.4xlarge': {
-		'id': 'cg1.4xlarge',
-		'name': 'Cluster GPU Quadruple Extra Large Instance',
-		'ram': 22528,
-		'disk': 1690,
-		'bandwidth': None
-	},
-	'cc1.4xlarge': {
-		'id': 'cc1.4xlarge',
-		'name': 'Cluster Compute Quadruple Extra Large Instance',
-		'ram': 23552,
-		'disk': 1690,
-		'bandwidth': None
-	},
-}
-
-def write_conf(instance,filename=''):
-	""" Overwrite the conf file with dictionary values """
-	if not filename:
-		filename = fabric.api.env.conf['CONF_FILE']
-	obj = simplejson.dumps(instance, sort_keys=True, indent=4)
-	f = open(filename,'w')
-	f.write(obj)
-	f.close()
-
-def generate_config(provider='ec2_us_east'):
-	""" Generate a default json config file for your provider """
-	conf_file = fabric.api.env.conf['CONF_FILE']
-	if os.path.exists(conf_file):
-		if not fabric.contrib.console.confirm("Do you wish to overwrite the config file %s?" % (conf_file), default=False):
-			conf_file = os.path.join(os.getcwd(),fabric.api.prompt('Enter a new filename:'))
-
-	write_conf(PROVIDER_DICT[provider],filename=conf_file)
-	print fabric.colors.green('Successfully generated config file %s' % conf_file)
-
-def get_provider_dict():
-	""" Get the dictionary of provider settings """
-	conf_file = fabric.api.env.conf['CONF_FILE']
-	return simplejson.loads(open(conf_file,'r').read())
 
 def stage_exists(stage):
 	""" Abort if provider does not exist """

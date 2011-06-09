@@ -3,10 +3,12 @@ import fabric.colors
 import fabric.contrib
 import os
 
-def link_exists(source):
+def link_exists(source, sudo=False):
 	""" Determine if a file is a symlink """
 	with fabric.api.settings(fabric.api.hide('warnings','stderr','stdout','running'),warn_only=True):
-		return fabric.api.run("test -L '%s' && echo OK ; true" % source) == "OK"
+#		return bool(fabric.api.run("test -L %s" % source))
+		cmd = fabric.api.sudo if sudo else fabric.api.run
+		return 'symbolic link' in cmd('file %s' % source)
 
 def link(source,dest="",use_sudo=False,do_unlink=False,silent=False):
 	""" Make a symlink """

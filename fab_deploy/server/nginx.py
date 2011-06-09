@@ -1,4 +1,4 @@
-import fabric.api
+import fabric.api, fabric.contrib
 
 from fab_deploy.file import link, unlink
 from fab_deploy.package import package_install, package_update
@@ -30,8 +30,13 @@ def nginx_setup(stage=''):
 		fabric.api.sudo('mv %s %s.bkp' % (nginx_file,nginx_file))
 	if stage:
 		stage = '.%s' % stage
-	link('/srv/active/deploy/nginx%s.conf' % stage, dest=nginx_file,
-		use_sudo=True, do_unlink=True, silent=True)
+		
+	if fabric.contrib.files.exists('/srv/active/deploy/nginx%s.conf' % stage):
+		link('/srv/active/deploy/nginx%s.conf' % stage, dest=nginx_file, 
+			use_sudo=True, do_unlink=True, silent=True)
+	else:
+		link('/srv/active/deploy/nginx.conf', dest=nginx_file, 
+			use_sudo=True, do_unlink=True, silent=True)
 
 def nginx_service(command):
 	""" Run a nginx service """
