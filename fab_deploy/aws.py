@@ -60,11 +60,11 @@ def save_as_ami(name, deregister = None):
     ''' Saves and registers and returns an ami of name 'name' to the default ami bucket.  Optionally deregisters another AMI'''
     arch = 'i386' if re.search('i\d86', run('uname -m')) else 'x86_64'
     # Copy pk and cert to /tmp, somehow
-    put(fab_config['aws_x509_certificate'], '/tmp/pk.pem')
-    put(fab_config['aws_x509_private_key'], '/tmp/cert.pem')
+    put(fab_config['aws_x509_certificate'], '/tmp/cert.pem')
+    put(fab_config['aws_x509_private_key'], '/tmp/pk.pem')
     
-    fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True)
-    package_update()
+    if fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True):
+        package_update()
     package_install('ec2-ami-tools', 'ec2-api-tools')
     
     if deregister:

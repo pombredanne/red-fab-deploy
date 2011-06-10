@@ -4,7 +4,6 @@ from fabric import colors
 from fabric.api import env, prompt
 from fabric.contrib import console
 from fabric.utils import abort
-import fabric.state
 import os
 import simplejson
 import sys
@@ -22,19 +21,14 @@ def settings(settings_module):
     attempts = []
 
     if hasattr(env, 'settings_prefix'):
-        attempts += [[env.settings_prefix + settings_module, 'DEPLOY'], 
-                     (env.settings_prefix + settings_module).rsplit('.', 1)]
-    attempts += [[settings_module, 'DEPLOY'],
-                 settings_module.rsplit('.', 1)]
+        attempts += [env.settings_prefix + settings_module + '.DEPLOY', 
+                     env.settings_prefix + settings_module]
+    attempts += [settings_module + '.DEPLOY',
+                 settings_module]
     
     for attempt in attempts:
         try:
-            mod, var = attempt
-        except ValueError:
-            continue
-        try:
-            __import__(mod)
-            env.fab_deploy_settings = getattr(sys.modules[mod], var)
+            env.fab_deploy_settings = import_string(attempt)
             fab_config.load()
             fab_data.load()
             setup_hosts()
@@ -44,6 +38,13 @@ def settings(settings_module):
             pass
     
     abort(colors.red('Settings not found.'))
+    
+def import_string(string):
+    if string is None:
+        return lambda: None
+    mod, func = string.rsplit('.', 1)
+    __import__(mod)
+    return getattr(sys.modules[mod], func)
     
 class FabDeployConfig(object):
     
@@ -64,7 +65,7 @@ class FabDeployConfig(object):
                 ['aws_access_key_id', 'AWS_ACCESS_KEY_ID'],
                 ['aws_secret_access_key', 'AWS_SECRET_ACCESS_KEY'],
                 ['data_file', 'CONF_FILE'],
-                ['provider', 'PROVIDER'],
+                #['provider', 'PROVIDER'], #NO LONGER USED
                 ['repo', 'REPO'],
                 ['vcs', 'VCS'],
                 ['vcs_tags', 'VCS_TAGS']]

@@ -6,7 +6,7 @@ from fab_deploy.autoscale.hosts import autoscale_template_instances
 from fab_deploy.autoscale.server_data import get_data, set_data
 from fab_deploy.autoscale.util import update_fab_deploy
 from fab_deploy.aws import ec2_connection, ec2_instance, save_as_ami, ec2_region, ec2_location
-from fab_deploy.conf import fab_config, fab_data
+from fab_deploy.conf import fab_config, fab_data, import_string
 from fab_deploy.constants import SERVER_TYPE_WEB, SERVER_TYPE_DB
 from fab_deploy.db.postgresql import pgpool_set_hosts
 from fab_deploy.deploy import install_services, deploy_project, make_active
@@ -16,23 +16,18 @@ from fab_deploy.server.web import web_server_restart
 from fab_deploy.system import set_hostname, prepare_server
 from fabric import colors
 from fabric.api import local, run, sudo, env, put, warn
+from fabric.decorators import runs_once
 from time import sleep
 import os
-from fabric.decorators import runs_once
 
 @runs_once
 def go_prepare_autoscale(stage = None):
     ''' Open ports, startup db master, db and web templates. '''
-    stage = stage or env.stage
     
-    try:
-        ec2_authorize_port('default', 'tcp', '22')
-        ec2_authorize_port('default', 'tcp', '80')
-    except EC2ResponseError, err:
-        if 'InvalidPermission.Duplicate' not in str(err):
-            raise
-
-    env.conf['stage'] = stage
+    env.stage = stage or env.stage
+    
+    ec2_authorize_port('default', 'tcp', '22')
+    ec2_authorize_port('default', 'tcp', '80')
     ec2 = ec2_connection()
 
     instances = []
@@ -46,7 +41,7 @@ def go_prepare_autoscale(stage = None):
         data = fab_data.cluster(cluster)
         if settings['server_type'] == SERVER_TYPE_DB: 
             # Do the master first
-            instance = create_instance('%s-%s-master' % (stage, cluster),
+            instance = create_instance('%s-%s-master' % (env.stage, cluster),
                                     stage = stage,
                                     key_name = fab_config['key_name'],
                                     location = fab_config['region'],
@@ -58,7 +53,7 @@ def go_prepare_autoscale(stage = None):
             if 'instances' not in data: data['instances'] = {}
             data['instances']['master'] = instance.id
 
-        instance = create_instance('%s-%s-template' % (stage, cluster),
+        instance = create_instance('%s-%s-template' % (env.stage, cluster),
                                stage = stage,
                                key_name = fab_config['key_name'],
                                location = fab_config['region'],
@@ -91,7 +86,7 @@ def go_setup_autoscale_masters(stage = None):
     ''' Setup and install software on autoscale master (first) '''
     my_id = run('curl http://169.254.169.254/latest/meta-data/instance-id')
     tags = ec2_instance(my_id).tags
-    cluster, instance_type = tags[u'Name'].rsplit('-', 1)
+    stage, cluster, instance_type = tags[u'Name'].split('-')
     if instance_type == 'master':
         _go_setup_autoscale(stage)
 
@@ -99,13 +94,13 @@ def go_setup_autoscale_templates(stage = None):
     ''' Setup and install software on autoscale templates (second!) '''
     my_id = run('curl http://169.254.169.254/latest/meta-data/instance-id')
     tags = ec2_instance(my_id).tags
-    cluster, instance_type = tags[u'Name'].rsplit('-', 1)
+    stage, cluster, instance_type = tags[u'Name'].split('-')
     if instance_type != 'master':
         _go_setup_autoscale(stage)
 
 def _go_setup_autoscale(stage = None):
     ''' Base function for setup on masters and templates '''
-    stage = stage or env.conf['stage']
+    stage = stage or env.stage
     if not stage:
         raise Exception(colors.red('No stage provided'))
 
@@ -145,13 +140,13 @@ def _go_setup_autoscale(stage = None):
     except ValueError:
         warn(colors.yellow('No rc.local file found for server type %s' % data['server_type']))
 
-    fab_config.get('post_setup', {}).get(data['server_type'], lambda: None)()
+    import_string(options.get('post_setup'))()
 
 def go_deploy_autoscale(tagname, stage = None, force = False, use_existing = False):
     ''' Deploy tag 'tagname' to template servers.
       Non-web servers get it too (although not with a virtualenv) so they have confs and fabric stuff '''
     
-    stage = stage or env.conf['stage']
+    stage = stage or env.stage
     if not stage:
         raise Exception(colors.red('No stage provided'))
 
@@ -162,25 +157,25 @@ def go_deploy_autoscale(tagname, stage = None, force = False, use_existing = Fal
 
     make_active(tagname)
 
-    fab_config.get('post_activate', {}).get(data['server_type'], lambda: None)()
+    import_string(fab_config.cluster(data['cluster']).get('post_activate'))()
 
     if data['server_type'] == SERVER_TYPE_WEB:
         web_server_restart()
 
 def go_save_templates(stage = None):
     ''' Images templates to s3, registers them '''
-    stage = stage or env.conf['stage']
+    stage = stage or env.stage
     if not stage:
         raise Exception(colors.red('No stage provided'))
 
-    cluster, instance_type = run('hostname').rsplit('-', 1)
+    stage, cluster, instance_type = run('hostname').split('-')
     if instance_type == 'template':
         data = fab_data.cluster(cluster)
         data['image'] = save_as_ami(cluster, deregister = data.get('image'))
 
-def go_launch_autoscale(stage = None, force = False, ignore = False):
+def go_launch_autoscale(stage = None, force = False, use_existing = False):
     ''' Launches autoscale group with saved templates '''
-    stage = stage or env.conf['stage']
+    stage = stage or env.stage
     if not stage:
         raise Exception(colors.red('No stage provided'))
 
@@ -191,8 +186,9 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
     if instance_type != 'template': return
 
     values = fab_config.cluster(cluster)
+    data = fab_data.cluster(cluster)
 
-    conn = AutoScaleConnection(env.conf['AWS_ACCESS_KEY_ID'], env.conf['AWS_SECRET_ACCESS_KEY'],
+    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
                                region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
 
     print colors.blue('Processing group %s' % cluster)
@@ -206,15 +202,15 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
                 as_existing = conn.get_all_groups(names = [cluster])
             sleep(5)
             as_existing[0].delete()
-        elif not ignore:
-            raise Exception(colors.red('Autoscaling group exists.  Use force=True to override or ignore=True to keep going'))
+        elif not use_existing:
+            raise Exception(colors.red('Autoscaling group exists.  Use force=True to override or use_existing=True to keep going'))
 
     lc = conn.get_all_launch_configurations(names = ['%s-launch-config' % cluster])
     if lc:
         if force:
             lc[0].delete()
-        elif not ignore:
-            raise Exception(colors.red('Launch config exists.  Use force=True to override or ignore=True to keep going'))
+        elif not use_existing:
+            raise Exception(colors.red('Launch config exists.  Use force=True to override or use_existing=True to keep going'))
 
 
     if 'load-balancer' in values:
@@ -229,8 +225,8 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
         if existing:
             #if force:
             #    existing[0].delete()
-            #elif not ignore:
-                raise Exception(colors.red('Load balancer exists.  Use ignore=True to keep going or manually delete.'))
+            #elif not use_existing:
+                raise Exception(colors.red('Load balancer exists.  Use use_existing=True to keep going or manually delete.'))
 
         if not existing or force:
             balancer = elbconn.create_load_balancer(lb_values['cluster'], zones = [fab_config['location']],
@@ -257,7 +253,7 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
 
     # Launch Configuration
     if not lc or force:
-        lc = LaunchConfiguration(cluster = '%s-launch-config' % cluster, image_id = values['image'], key_name = fab_config['key_name'])
+        lc = LaunchConfiguration(name = '%s-launch-config' % cluster, image_id = data['image'], key_name = fab_config['key_name'])
         conn.create_launch_configuration(lc)
         print colors.green('Launch Configuration %s Created.' % lc.name)
 
@@ -266,7 +262,7 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
     if not as_existing or force:
         data = {'cluster': cluster,
                 'region': ec2_location(),
-                'availability_zone': fab_config['location'],
+                'availability_zone': fab_config['availability_zone'],
                 'min_size': values['size_range'][0],
                 'max_size': values['size_range'][1],
                 'lcname': lc.name,
@@ -292,7 +288,7 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
 
         data['scale_up_policy'] = local('''as-put-scaling-policy \
                 -C %(cert)s -K %(key)s \
-                --cluster %(cluster)s-scale-up-policy \
+                --name %(cluster)s-scale-up-policy \
                 --region %(region)s \
                 --auto-scaling-group %(cluster)s \
                 --type ChangeInCapacity \
@@ -301,7 +297,7 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
 
         data['scale_down_policy'] = local('''as-put-scaling-policy \
                 -C %(cert)s -K %(key)s \
-                --cluster %(cluster)s-scale-down-policy \
+                --name %(cluster)s-scale-down-policy \
                 --region %(region)s \
                 --auto-scaling-group %(cluster)s \
                 --type ChangeInCapacity \
@@ -311,7 +307,7 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
         local('''mon-put-metric-alarm %(cluster)s-high-cpu-alarm \
                 -C %(cert)s -K %(key)s \
                 --region %(region)s \
-                --metric-cluster CPUUtilization \
+                --metric-name CPUUtilization \
                 --namespace "AWS/EC2" \
                 --dimensions "AutoScalingGroupName=%(cluster)s" \
                 --comparison-operator GreaterThanThreshold \
@@ -324,7 +320,7 @@ def go_launch_autoscale(stage = None, force = False, ignore = False):
         local('''mon-put-metric-alarm %(cluster)s-high-cpu-alarm \
                 -C %(cert)s -K %(key)s \
                 --region %(region)s \
-                --metric-cluster CPUUtilization \
+                --metric-name CPUUtilization \
                 --namespace "AWS/EC2" \
                 --dimensions "AutoScalingGroupName=%(cluster)s" \
                 --comparison-operator LessThanThreshold \

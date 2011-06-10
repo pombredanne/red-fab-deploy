@@ -33,11 +33,10 @@ def export(tagname,local=False):
 		vcslocation = os.path.join(fabric.api.env.conf['REPO'],tagname)
 	else:
 		vcslocation = os.path.join(fabric.api.env.conf['REPO'],fabric.api.env.conf['VCS_TAGS'],tagname)
+	command = 'svn export %s' % vcslocation
 	if local:
-		command = 'svn export %s' % vcslocation
 		fabric.api.local(command)
 	else:
-		command = 'svn export %s' % vcslocation
 		fabric.api.run(command)
 	
 def configure():

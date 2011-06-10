@@ -24,7 +24,7 @@ def uwsgi_install(force = False):
 	package_install('libxml2','libxml2-dev')
 	fabric.api.sudo('pip install http://projects.unbit.it/downloads/uwsgi-lts.tar.gz')
 
-def uwsgi_setup(stage=''):
+def uwsgi_setup(stage='', settings={}):
 	""" Setup uWSGI. """
 	
 	# Service script
@@ -42,7 +42,12 @@ def uwsgi_setup(stage=''):
 		fabric.api.sudo('mv %s %s.bkp' % (uwsgi_file, uwsgi_file))
 	if stage:
 		stage = '.%s' % stage
-	if fabric.contrib.files.exists('/srv/active/deploy/uwsgi%s.ini' % stage):
+
+	
+	if 'settings_file' in settings:
+		link(os.path.join('/srv', 'active', settings['settings_file']), dest=uwsgi_file, 
+			use_sudo=True, do_unlink=True, silent=True)
+	elif fabric.contrib.files.exists('/srv/active/deploy/uwsgi%s.ini' % stage):
 		link('/srv/active/deploy/uwsgi%s.ini' % stage, dest=uwsgi_file, 
 			use_sudo=True, do_unlink=True, silent=True)
 		# PLEASE DO NOT INTRODUCE BACKWARDS INCOMPATIBILITIES!

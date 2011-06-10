@@ -1,9 +1,11 @@
-import fabric.api, fabric.contrib
-
 from fab_deploy.file import link, unlink
 from fab_deploy.package import package_install, package_update
 from fab_deploy.system import service
 from fab_deploy.utils import detect_os
+import fabric.api
+import fabric.contrib
+import os
+
 
 def _nginx_is_installed():
 	with fabric.api.settings(fabric.api.hide('running','stdout','stderr'), warn_only=True):
@@ -23,15 +25,19 @@ def nginx_install():
 	package_update()
 	package_install(['nginx','libxml2','libxml2-dev'], options.get(os,''))
 
-def nginx_setup(stage=''):
+def nginx_setup(stage='', settings={}):
 	""" Setup nginx. """
 	nginx_file = '/etc/nginx/nginx.conf'
 	if fabric.contrib.files.exists(nginx_file):
 		fabric.api.sudo('mv %s %s.bkp' % (nginx_file,nginx_file))
 	if stage:
 		stage = '.%s' % stage
-		
-	if fabric.contrib.files.exists('/srv/active/deploy/nginx%s.conf' % stage):
+	
+	if 'settings_file' in settings:
+		link(os.path.join('/srv', 'active', settings['settings_file']), dest=nginx_file, 
+			use_sudo=True, do_unlink=True, silent=True)
+
+	elif fabric.contrib.files.exists('/srv/active/deploy/nginx%s.conf' % stage):
 		link('/srv/active/deploy/nginx%s.conf' % stage, dest=nginx_file, 
 			use_sudo=True, do_unlink=True, silent=True)
 	else:

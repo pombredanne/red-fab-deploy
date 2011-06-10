@@ -70,7 +70,7 @@ def rebuild_index():
     with cd('/srv/active/project'):
         sudo('mkdir -p /srv/site_index')
         sudo('chmod a+w /srv/site_index')
-        run('source /srv/active/env/bin/activate && ./manage.py rebuild_index --settings=config.production --noinput')
+        run('source /srv/active/env/bin/activate && /srv/active/project/manage.py rebuild_index --settings=config.production --noinput')
         # It just removes site_index if there is nothing in the index.  wtf.
         sudo('mkdir -p /srv/site_index')
         sudo('chmod -R a+w /srv/site_index')

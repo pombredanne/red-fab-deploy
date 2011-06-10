@@ -30,9 +30,7 @@ def find_servers(stage, cluster):
 
 def autoscale_template_instances(stage = None, server_type = None):
     ''' Set hosts to master and template instances *only* for given stage/server_type '''
-    stage = stage or env.stage
-    
-    env.conf['stage'] = stage
+    env.stage = stage or env.stage
     
     hosts = []
     for cluster, settings in fab_config['clusters'].iteritems():

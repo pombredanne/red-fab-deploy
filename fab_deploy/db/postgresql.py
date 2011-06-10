@@ -140,8 +140,10 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 		
 		fabric.api.local('%s sudo tar czvf - /data | %s sudo tar xzvf - -C /' % (ssh_master, ssh_slave))
 		fabric.api.sudo('chown -R postgres:postgres /data')
-		
+		#XXX: create user nobody? don't need to create users on both i suppose
 	if options.get('support_pgpool'):
+		if 'nobody' not in fabric.api.sudo('''su postgres -c "psql -c '\du'"'''):
+			fabric.api.sudo('su postgres -c "createuser -DIRS -U postgres -P nobody"' % (options['user']))
 		append(pg_dir + 'pg_hba.conf', ['host postgres nobody 0.0.0.0/0 trust', #TODO: see if pgpool can send a password with health check somehow
 										'hostssl all all 0.0.0.0/0 password'], True)
 	else:
@@ -199,47 +201,3 @@ def pgpool_set_hosts(*hosts):
 		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave),
 									'backend_port%d = 5432' % i,
 									'backend_weight%d = 1' % i], use_sudo=True)
-		
-	
-def postgresql_execute(sql, user='', password=''):
-	"""
-	Executes passed sql command using postgresql shell.
-	"""
-	return fabric.api.run("echo '%s' | psql -u%s -p%s" % (sql, user, password))
-
-def postgresql_create_db():
-	"""
-	Create an empty postgresql database.
-	"""
-	database = fabric.api.runprompt('Please enter database name:')
-	
-	fabric.api.run("createdb %s" % (database))
-
-def postgresql_create_user():
-	"""
-	Creates a new postgresql user.
-	"""
-	user     = fabric.api.runprompt('Please enter username:')
-	new_user = fabric.api.runprompt('Please enter new username:')
-	
-	fabric.api.run("createuser %s -P -U %s" % (new_user, user))
-
-def postgresql_drop_user():
-	""" Drop a postgresql user """
-	pass
-
-def postgresql_dump():
-	""" Runs postgresqldump. Result is stored at /srv/active/sql/ """
-	dir = '/srv/active/sql/'
-	pass
-
-def postgresql_load():
-	""" Load a postgresql database """
-	pass
-
-def postgresql_backup():
-	""" Backup the database """
-	pass
-
-def service_postgresql(command):
-	service('postgresql', command)

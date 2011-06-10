@@ -1,5 +1,5 @@
 from fab_deploy import vcs
-from fab_deploy.conf import fab_config
+from fab_deploy.conf import fab_config, import_string
 from fab_deploy.db import *
 from fab_deploy.file import link, unlink, link_exists
 from fab_deploy.machine import get_provider_dict, stage_exists, ec2_create_key, ec2_authorize_port, deploy_instances, update_instances
@@ -24,10 +24,6 @@ def go(stage="development", key_name='ec2.development'):
 	ports on your ec2 instance.
 	"""
 
-	# Get the provider and key_name
-	provider = fabric.api.env.conf['PROVIDER']
-	key_name = '%s.%s' % (provider,key_name)
-	
 	# Setup keys and authorize ports
 	ec2_create_key(key_name)
 	ec2_authorize_port('default','tcp','22')
@@ -59,7 +55,7 @@ def go_setup(stage="development"):
 			set_hostname(name)
 			prepare_server()
 			install_services(node_data['id'], name, address, stage, node_data, replication=replication)
-			fab_config['post_setup'].get(node_data['server-type'], lambda: None)()
+			import_string(node_data.get('post_setup'))()
 
 def install_services(id, name, address, stage, node_data, **kwargs):
 	''' Install all services '''
@@ -68,10 +64,10 @@ def install_services(id, name, address, stage, node_data, **kwargs):
 		settings = node_data['services'][service]
 		if service == 'nginx':
 			nginx_install()
-			nginx_setup(stage=stage)
+			nginx_setup(stage, settings)
 		elif service == 'uwsgi':
 			uwsgi_install()
-			uwsgi_setup(stage=stage)
+			uwsgi_setup(stage, settings)
 		elif service == 'mysql':
 			mysql_install()
 			mysql_setup(stage=stage,replication=kwargs.get('replication'),**settings)

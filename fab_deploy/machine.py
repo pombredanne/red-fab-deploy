@@ -5,15 +5,16 @@ Ubuntu image sizes:
 """
 
 from boto import ec2
-from fab_deploy.constants import *
+from boto.exception import EC2ResponseError
 from fab_deploy.conf import *
+from fab_deploy.constants import *
 from fab_deploy.package import package_install, package_update
+from fabric.api import env
 from pprint import pprint
 import boto
 import boto.ec2
 import boto.ec2.autoscale
 import fabric.api
-from fabric.api import env
 import fabric.colors
 import fabric.contrib
 import os
@@ -77,7 +78,8 @@ def ec2_create_key(key_name):
 	f.close()
 	os.chmod(private_key, 0600)
 
-def ec2_authorize_port(name,protocol,port):
+def ec2_authorize_port(security_group,protocol,port):
+	''' Authorize ec2 port on security group; protocol; port '''
 
 	if protocol not in ['tcp','udp','icmp']:
 		fabric.api.abort(fabric.colors.red('Protocol must be one of tcp, udp, or icmp'))
@@ -86,14 +88,18 @@ def ec2_authorize_port(name,protocol,port):
 		fabric.api.abort(fabric.colors.red('Ports must fall between 0 and 65535'))
 		
 	params = {
-			'group_name': name,
+			'group_name': security_group,
 			'ip_protocol': protocol,
 			'from_port': port,
 			'to_port': port,
 			'cidr_ip': '0.0.0.0/0'
 			}
-	return get_connection().authorize_security_group(**params)
-	
+	try:
+		return get_connection().authorize_security_group(**params)
+	except EC2ResponseError, err:
+		if 'InvalidPermission.Duplicate' not in str(err):
+			raise
+
 #=== List Instances
 
 def list_instances():
