@@ -1,8 +1,10 @@
 from fab_deploy import vcs
 from fab_deploy.conf import fab_config, import_string
 from fab_deploy.db import *
-from fab_deploy.file import link, unlink, link_exists
-from fab_deploy.machine import get_provider_dict, stage_exists, ec2_create_key, ec2_authorize_port, deploy_instances, update_instances
+from fab_deploy.file import link_exists, link, unlink
+from fab_deploy.machine import (get_provider_dict, stage_exists,
+	ec2_create_key, ec2_authorize_port,
+	deploy_instances, update_instances)
 from fab_deploy.server import *
 from fab_deploy.server.s3fs import s3fs_install, s3fs_setup
 from fab_deploy.system import get_hostname, set_hostname, prepare_server
@@ -86,11 +88,11 @@ def install_services(id, name, address, stage, node_data, **kwargs):
 		else:
 			fabric.api.warn(fabric.colors.yellow('%s is not an available service' % service))
 
-def go_deploy(stage="development", tagname="trunk", username="ubuntu", use_existing=False):
+def go_deploy(stage="development", tagname="trunk", username="ubuntu", full=True, use_existing=False):
 	"""
 	Deploy project and make active on any machine with server software
 	
-    $ fab -i deploy/[your private SSH key here] set_hosts go_deploy
+	$ fab -i deploy/[your private SSH key here] set_hosts go_deploy
 	"""
 	stage_exists(stage)
 	PROVIDER = get_provider_dict()
@@ -101,8 +103,12 @@ def go_deploy(stage="development", tagname="trunk", username="ubuntu", use_exist
 		if host == fabric.api.env.host:
 			service = instance_dict['services']
 			# If any of these services are listed then deploy the project
+
 			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
-				deploy_full(tagname,force=True,username=username, use_existing=use_existing)
+				if full:
+					deploy_full(tagname,force=True,username=username)
+				else:
+					deploy_project(tagname,force=True,username=username)
 	
 def deploy_full(tagname, force=False, username="ubuntu", use_existing=False):
 	""" 
@@ -152,8 +158,15 @@ def make_active(tagname):
 
 def check_active():
 	""" Abort if there is no active deployment """
-	if not link_exists('/srv/active/'):
+	if not link_exists('/srv/active'):
 		fabric.api.abort(fabric.colors.red('There is no active deployment'))
+
+def link_host(hostfile):
+	""" Link the hostname to the host file """
+	check_active()
+	link(os.path.join('/srv/active/project/hosts', hostfile),
+		 os.path.join('/srv/active/project/hosts', '%s.py' % get_hostname()), 
+		 do_unlink=True, silent=True)
 
 def undeploy():
 	""" Shuts site down. This command doesn't clean everything, e.g.

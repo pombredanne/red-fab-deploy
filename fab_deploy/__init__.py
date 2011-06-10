@@ -7,7 +7,7 @@ from fab_deploy.machine import (generate_config,
 
 from fab_deploy.deploy import (go, go_setup, go_deploy,
 	deploy_full, deploy_project,
-	make_src_dir, make_active, undeploy)
+	make_src_dir, make_active, link_host, undeploy)
 
 from fab_deploy.virtualenv import (pip, pip_install, pip_update,
 	virtualenv_create, virtualenv)

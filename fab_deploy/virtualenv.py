@@ -33,6 +33,10 @@ def pip(dir='/srv/active/',commands=''):
 
 def pip_install(dir='/srv/active/',what='requirements', options=''):
 	""" Installs pip requirements listed in ``deploy/<file>.txt`` file. """
+	# Basic requirements used to be in requirements.txt but are now in
+	# requirements/base.txt. The next line provides legacy support
+	if(what=='requirements' and not fabric.contrib.files.exists(dir + '/deploy/' + '/requirements.txt') and fabric.contrib.files.exists(dir + '/deploy/' + '/requirements/base.txt')):
+		what = 'requirements/base'
 	pip(dir,commands='install %s -r %s/deploy/%s.txt' % (options,dir,what))
 
 def pip_update(dir='/srv/active/',what='requirements', options=''):
