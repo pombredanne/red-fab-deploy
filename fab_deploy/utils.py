@@ -271,12 +271,9 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
         conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
                                region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
         
-        cluster_names = clusters or fab_config['clusters'].keys()
-        ec2_clusters = dict((str(group.name), group) for group in conn.get_all_groups(cluster_names))
+        ec2_clusters = dict((str(group.name), group) for group in conn.get_all_groups())
         
         for cluster, config in fab_config['clusters'].iteritems():
-            if cluster not in cluster_names:
-                continue
             group = ec2_clusters[cluster]
             for instance_object in group.instances:
                 instance = ec2_instance(instance_object.instance_id)
@@ -298,8 +295,9 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
                                        'instance_type': str(instance.tags.get('Instance Type'))}
         
         env.instances = instances
-        print env.instances
+        
     # Filter 
+    print clusters, server_types, instance_types
     instances = dict((instance, attrs) for instance, attrs in env.instances.iteritems()
          if (not server_types or attrs['server_type'] in server_types)\
          and (not instance_types or attrs['instance_type'] in instance_types)\

@@ -25,7 +25,7 @@ def update_db_servers(cluster = None):
     else:
         raise NotImplementedError('Cound not find db autoscale cluster')
 
-    pgpool_set_hosts(*find_instances(clusters=[cluster]))
+    pgpool_set_hosts(*find_instances(clusters=[cluster], instance_types=['autoscale']))
     sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
 def sync_data():
