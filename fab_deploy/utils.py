@@ -250,15 +250,9 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
 def find_instances(clusters = None, server_types = None, instance_types = None):
     
     print fabric.colors.green('Finding hosts...')
-    clusters = env.clusters = clusters or getattr(env, 'clusters', None)
-    server_types = env.server_types = server_types or getattr(env, 'server_types', None)
-    instance_types = env.server_types = clusters or getattr(env, 'instance_types', None)
-    
-    from fab_deploy.aws import aws_connection_opts, ec2_connection
-    from fab_deploy.conf import fab_config
-    from fab_deploy.aws import ec2_region, ec2_location, ec2_instance
-    ec2 = ec2_connection()
-    
+    clusters = clusters or getattr(env, 'clusters', None)
+    server_types = server_types or getattr(env, 'server_types', None)
+    instance_types = instance_types or getattr(env, 'instance_types', None)
     if isinstance(clusters, basestring):
         clusters = [clusters]
     if isinstance(server_types, basestring):
@@ -266,14 +260,23 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
     if isinstance(instance_types, basestring):
         instance_types = [instance_types]
     
+    from fab_deploy.aws import aws_connection_opts, ec2_connection
+    from fab_deploy.conf import fab_config
+    from fab_deploy.aws import ec2_region, ec2_location, ec2_instance
+    ec2 = ec2_connection()
+    
     instances = {}
     if not hasattr(env, 'instances'):
         # Get autoscaled instances
         conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
                                region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
         
-        ec2_clusters = dict((group.name, group) for group in conn.get_all_groups(clusters))
+        cluster_names = clusters or fab_config['clusters'].keys()
+        ec2_clusters = dict((str(group.name), group) for group in conn.get_all_groups(cluster_names))
+        
         for cluster, config in fab_config['clusters'].iteritems():
+            if cluster not in cluster_names:
+                continue
             group = ec2_clusters[cluster]
             for instance_object in group.instances:
                 instance = ec2_instance(instance_object.instance_id)
@@ -295,7 +298,7 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
                                        'instance_type': str(instance.tags.get('Instance Type'))}
         
         env.instances = instances
-    
+        print env.instances
     # Filter 
     instances = dict((instance, attrs) for instance, attrs in env.instances.iteritems()
          if (not server_types or attrs['server_type'] in server_types)\
