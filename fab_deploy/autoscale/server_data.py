@@ -1,12 +1,15 @@
 from fabric.operations import sudo, run, local, env
 from simplejson import loads, dumps
 
+def local_run(cmd):
+    return local(cmd, capture=True)
+
 def get_data():
     ''' Retrieve stage, server type, and cluster name from server.  Returns dict of those. '''
     if env.host_string:
         cmd = run
     else:
-        cmd = local
+        cmd = local_run
     
     try:
         return loads(cmd('cat /etc/red_fab_deploy_data'))
