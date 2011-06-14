@@ -4,7 +4,7 @@ from boto.ec2.elb import ELBConnection, HealthCheck
 from boto.exception import BotoServerError, EC2ResponseError
 from fab_deploy.autoscale.server_data import get_data, set_data
 from fab_deploy.autoscale.util import update_fab_deploy
-from fab_deploy.aws import ec2_connection, ec2_instance, save_as_ami, ec2_region, ec2_location
+from fab_deploy.aws import ec2_connection, ec2_instance, save_as_ami, ec2_region, ec2_location, aws_connection_opts
 from fab_deploy.conf import fab_config, fab_data, import_string
 from fab_deploy.constants import SERVER_TYPE_WEB, SERVER_TYPE_DB
 from fab_deploy.db.postgresql import pgpool_set_hosts
@@ -49,28 +49,27 @@ def go_start(stage = None, key_name = None):
 
         if settings.get('autoscale'):
             
-            machines_to_start = [['template', False]]
+            machines_to_start = [['template', 'template', False]]
             if settings['server_type'] == SERVER_TYPE_DB: 
-                machines_to_start.insert(0, ['master', True])
+                machines_to_start.insert(0, ['master', 'master', True])
         
         elif settings.get('count'):
-            machines_to_start = [[i, False] for i in xrange(settings['count'])]
+            machines_to_start = [[i, None, False] for i in xrange(settings['count'])]
             
         else:
-            machines_to_start = [cluster, False]
+            machines_to_start = [cluster, None, False]
                 
         if not console.confirm('Do you wish to stage 3 servers, named: %s' % ', '.join(machines_to_start),
                                default=False):
             abort(colors.red('Aborting instance deployment.'))
 
-        for name, needs_static_ip in machines_to_start:
+        for name, instance_type, needs_static_ip in machines_to_start:
             instance = create_instance('%s-%s-%s' % (env.stage, cluster, name),
-                stage = env.stage,
                 key_name = key_name or fab_config['key_name'],
                 location = fab_config['region'],
                 image_id = settings.get('initial_image') or settings.get('image') or fab_config['image'],
                 size = settings['size'],
-                server_type = settings.get('server_type'))
+                tags = {'Cluster': cluster, 'Stage': env.stage, 'Server Type': settings.get('server_type'), 'Instance Type': instance_type})
             instances.append(instance)
             if needs_static_ip:
                 needsips.append([data, instance])
@@ -204,8 +203,7 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
     values = fab_config.cluster(cluster)
     data = fab_data.cluster(cluster)
 
-    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
-                               region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
+    conn = AutoScaleConnection(**aws_connection_opts())
 
     print colors.blue('Processing group %s' % cluster)
     as_existing = conn.get_all_groups(names = [cluster])
@@ -419,8 +417,7 @@ def go_stop_autoscale(stage = None, clusters = None):
     if env.stage and not clusters:
         clusters = fab_config['clusters'].keys()
     
-    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
-                           region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
+    conn = AutoScaleConnection(**aws_connection_opts())
 
     for cluster in clusters:
         print colors.blue('Stopping group %s' % cluster)

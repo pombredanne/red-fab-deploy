@@ -17,9 +17,9 @@ def ec2_instances():
 
 def ec2_location():
     ''' Returns the current ec2 region as text'''
-    try:
+    if 'region' in fab_config:
         return fab_config['region']
-    except:
+    else:
         return get_provider_dict()['location'][:-1]
 
 def ec2_region(endpoint):

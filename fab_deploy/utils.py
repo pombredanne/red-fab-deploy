@@ -1,6 +1,7 @@
+from boto.ec2.autoscale import AutoScaleConnection
 from fab_deploy.virtualenv import virtualenv
-from fabric.decorators import runs_once
 from fabric.api import env
+from fabric.decorators import runs_once, hosts
 from functools import wraps
 from pprint import pformat
 import fabric.api
@@ -9,6 +10,7 @@ import fabric.contrib.files
 import os
 import re
 import simplejson
+from compiler.ast import Return
 
 
 def _codename(distname, version, id):
@@ -215,51 +217,88 @@ def combine(*dikts):
     return master
 
 
-@runs_once
 def list_hosts():
     ''' Lists hosts! Useful for debugging. '''
     print env.hosts
 
-@runs_once
 def stage(st):
     env.stage = st
     return setup_hosts()
-    
-@runs_once
-def server_type(server_type):
-    return setup_hosts(server_type = server_type)
 
-@runs_once
-def setup_hosts(server_type = None, autoscale = None):
-    from fab_deploy.conf import fab_config, fab_data
+def cluster(name):
+    return setup_hosts(clusters = [name])
+    
+def server_type(type):
+    return setup_hosts(server_types = [type])
+
+def instance_type(type):
+    return setup_hosts(instance_types = [type])
+
+def setup_hosts(clusters = None, server_types = None, instance_types = None):
+    #HAAAAAAAAAAAAACK
+    class FakeString(str):
+        def __init__(self, *args, **kwargs):
+            super(FakeString, self).__init__(*args, **kwargs)
+            self.command_run = True
+    if getattr(env.command, 'command_run', None):
+        return
+    env.command = FakeString(env.command)
+    ####
+    
+    print fabric.colors.green('Finding hosts...')
+    
+    from fab_deploy.aws import aws_connection_opts, ec2_connection
+    from fab_deploy.conf import fab_config
     from fab_deploy.autoscale.hosts import set_hosts
-    hosts = []
+    from fab_deploy.aws import ec2_region, ec2_location, ec2_instance
+    ec2 = ec2_connection()
     
-    for cluster, settings in fab_config['clusters'].iteritems():
-        hosts_found = False
-        if server_type and settings.get('server_type') != server_type:
-            continue
-        try:
-            if autoscale in [None, False]:
-                for ip in fab_data['machines'][env.stage][cluster]['public_ip']:
-                    if env.hosts and 'ubuntu@%s' % ip not in env.hosts:
-                        continue
-                    hosts.append(ip)
-                    hosts_found = True
-        except KeyError, IndexError:
-            pass
+    if isinstance(clusters, basestring):
+        clusters = [clusters]
+    if isinstance(server_types, basestring):
+        server_types = [server_types]
+    if isinstance(instance_types, basestring):
+        instance_types = [instance_types]
+    
+    instances = {}
+    if not hasattr(env, 'instances'):
+        # Get autoscaled instances
+        conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
+                               region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
         
-        try:
-            if autoscale in [None, True]: #TODO: server type for this one
-                if u'master' in fab_data['clusters'][cluster]['instances']:
-                    hosts.append(fab_data['clusters'][cluster]['instances']['master'])
-                hosts.append(fab_data['clusters'][cluster]['instances']['template'])
-                hosts_found = True
+        ec2_clusters = dict((group.name, group) for group in conn.get_all_groups(clusters))
+        for cluster, config in fab_config['clusters'].iteritems():
+            group = ec2_clusters[cluster]
+            for instance_object in group.instances:
+                instance = ec2_instance(instance_object.instance_id)
+                if instance.state != 'running':
+                    continue
+                instances[instance] = {'stage': env.stage,
+                                       'cluster': cluster,
+                                       'server_type': config.get('server_type'),
+                                       'instance_type': 'autoscale'}
+        
+        # Get manually created instances
+        for request in ec2.get_all_instances():
+            for instance in request.instances:
+                if instance in instances or str(instance.tags.get('Stage')) != env.stage or instance.state != 'running':
+                    continue
+                instances[instance] = {'stage': str(instance.tags.get('Stage')),
+                                       'cluster': str(instance.tags.get('Cluster')),
+                                       'server_type': str(instance.tags.get('Server Type')),
+                                       'instance_type': str(instance.tags.get('Instance Type'))}
+        
+        env.instances = instances
+    
+    # Filter 
+    instances = dict((instance, attrs) for instance, attrs in env.instances.iteritems()
+         if (not server_types or attrs['server_type'] in server_types)\
+         and (not instance_types or attrs['instance_type'] in instance_types)\
+         and (not clusters or attrs['cluster'] in clusters))
+         
+    # return in order masters... templates ... autoscale... other
+#    these_instance_types = ['master', 'template', 'autoscale']
+#    instances = sorted(instances.iteritems(),
+#                       key=lambda (k, value): these_instance_types.index(value['instance_type']) if value['instance_type'] in these_instance_types else 999)
 
-        except KeyError, IndexError:
-            pass
-        
-        if not hosts_found:
-            fabric.api.warn(fabric.colors.yellow('No public IPs found for %s in %s' % (cluster, env.stage)))
-             
-    set_hosts(hosts)
+    set_hosts(instances.keys())

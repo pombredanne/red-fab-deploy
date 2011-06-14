@@ -27,7 +27,7 @@ def update_db_servers(stage = None, cluster = None):
     else:
         raise NotImplementedError('Cound not find db autoscale cluster')
 
-    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.status) == 'running']
+    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.state) == 'running']
 
     # We now have all of the db servers...
     pgpool_set_hosts(*servers)

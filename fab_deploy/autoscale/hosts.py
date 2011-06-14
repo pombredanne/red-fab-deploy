@@ -71,6 +71,7 @@ def original_master(stage = None, cluster = None):
         data = get_data()
         
     config = fab_config.get(data['cluster'])
+    
     if config.get('server_type') == SERVER_TYPE_DB:
         pass
     elif config.get('with_db_cluster'):

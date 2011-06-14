@@ -213,8 +213,8 @@ def create_instance(name,**kwargs):
 		instance	= reservation.instances[0]
 
 		instance.add_tag('Name', name)
-		instance.add_tag('Server Type', kwargs.get('server_type', ''))
-		instance.add_tag('Stage', kwargs.get('stage', ''))
+		for tag, value in kwargs.get('tags', []).iteritems():
+			instance.add_tag(tag, value)
 
 		print fabric.colors.green('Instance %s named %s is pending' % (instance,name))
 		return instance
