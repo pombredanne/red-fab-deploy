@@ -223,32 +223,40 @@ def list_hosts():
 @runs_once
 def stage(st):
     env.stage = st
-    _set_or_filter_hosts()
+    return setup_hosts()
     
 @runs_once
-def type(server_type):
-    _set_or_filter_hosts(server_type = server_type)
+def server_type(server_type):
+    return setup_hosts(server_type = server_type)
 
 @runs_once
-def setup_hosts():
-    _set_or_filter_hosts()
-
-#--- Set all available hosts
-def _set_or_filter_hosts(server_type=None):
+def setup_hosts(server_type = None, autoscale = None):
     from fab_deploy.conf import fab_config, fab_data
     from fab_deploy.autoscale.hosts import set_hosts
     hosts = []
-    for name, settings in fab_config['clusters'].iteritems():
+    
+    for cluster, settings in fab_config['clusters'].iteritems():
+        hosts_found = False
         if server_type and settings.get('server_type') != server_type:
             continue
-        try:
-            for ip in fab_data['machines'][env.stage][name]['public_ip']:
-                if env.hosts and 'ubuntu@%s' % ip not in env.hosts:
-                    continue
-                
-                hosts.append(ip)
-                
-        except KeyError, IndexError:
-            fabric.api.warn(fabric.colors.yellow('No public IPs found for %s in %s' % (name, env.stage)))
+        if autoscale in [None, False]:
+            try:
+                for ip in fab_data['machines'][env.stage][cluster]['public_ip']:
+                    if env.hosts and 'ubuntu@%s' % ip not in env.hosts:
+                        continue
+                    hosts.append(ip)
+                    hosts_found = True
 
+            except KeyError, IndexError:
+                pass
+
+        if autoscale in [None, True]:
+            if u'master' in fab_data['clusters'][cluster]['instances']:
+                hosts.append(fab_data['clusters'][cluster]['instances']['master'])
+            hosts.append(fab_data['clusters'][cluster]['instances']['template'])
+            hosts_found = True
+
+        if not hosts_found:
+            fabric.api.warn(fabric.colors.yellow('No public IPs found for %s in %s' % (cluster, env.stage)))
+             
     set_hosts(hosts)

@@ -1,6 +1,7 @@
 #!/bin/bash
 
-source /srv/active/env/bin/activate
-fab -f /srv/active/fabfile.py autoscaling_web_servers update_db_servers
-fab -f /srv/active/fabfile.py sync_data
-fab -f /srv/active/fabfile.py original_master service_postgresql:stop
+cd /srv/active
+source env/bin/activate
+fab -f fabfile.py settings:config.production autoscaling_web_servers update_db_servers
+fab -f fabfile.py settings:config.production sync_data
+fab -f fabfile.py settings:config.production original_master service_postgresql:stop

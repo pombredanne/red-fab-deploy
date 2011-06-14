@@ -2,7 +2,6 @@
 from boto.ec2.autoscale import AutoScaleConnection, LaunchConfiguration
 from boto.ec2.elb import ELBConnection, HealthCheck
 from boto.exception import BotoServerError, EC2ResponseError
-from fab_deploy.autoscale.hosts import autoscale_template_instances
 from fab_deploy.autoscale.server_data import get_data, set_data
 from fab_deploy.autoscale.util import update_fab_deploy
 from fab_deploy.aws import ec2_connection, ec2_instance, save_as_ami, ec2_region, ec2_location
@@ -10,19 +9,27 @@ from fab_deploy.conf import fab_config, fab_data, import_string
 from fab_deploy.constants import SERVER_TYPE_WEB, SERVER_TYPE_DB
 from fab_deploy.db.postgresql import pgpool_set_hosts
 from fab_deploy.deploy import install_services, deploy_project, make_active
-from fab_deploy.machine import ec2_authorize_port, create_instance
+from fab_deploy.machine import ec2_authorize_port, create_instance, update_instances
 from fab_deploy.package import package_install
 from fab_deploy.server.web import web_server_restart
 from fab_deploy.system import set_hostname, prepare_server
+from fab_deploy.utils import setup_hosts
 from fabric import colors
-from fabric.api import local, run, sudo, env, put, warn
+from fabric.api import run, sudo, env, put, warn, abort, local as fab_local
+from fabric.contrib import console
 from fabric.decorators import runs_once
 from time import sleep
 import os
+import re
+import webbrowser
+
+def local(cmd, *args, **kwargs):
+    return fab_local(re.sub('\s+', ' ', cmd), *args, **kwargs)
 
 @runs_once
-def go_prepare_autoscale(stage = None):
-    ''' Open ports, startup db master, db and web templates. '''
+def go_start(stage = None, key_name = None):
+    ''' Open ports, startup instances. '''
+    #TODO: generate key?
     
     env.stage = stage or env.stage
     
@@ -33,37 +40,43 @@ def go_prepare_autoscale(stage = None):
     instances = []
     needsips = []
     
+    if 'machines' not in fab_data: fab_data['machines'] = {}
+    if env.stage not in fab_data['machines']: fab_data['machines'][stage] = {}
+    
     # Create and start instances
     for cluster, settings in fab_config['clusters'].iteritems():
-        if not settings.get('autoscale'):
-            continue
-
         data = fab_data.cluster(cluster)
-        if settings['server_type'] == SERVER_TYPE_DB: 
-            # Do the master first
-            instance = create_instance('%s-%s-master' % (env.stage, cluster),
-                                    stage = stage,
-                                    key_name = fab_config['key_name'],
-                                    location = fab_config['region'],
-                                    image_id = settings['initial_image'],
-                                    size = settings['size'],
-                                    server_type = settings['server_type'])
+
+        if settings.get('autoscale'):
+            
+            machines_to_start = [['template', False]]
+            if settings['server_type'] == SERVER_TYPE_DB: 
+                machines_to_start.insert(0, ['master', True])
+        
+        elif settings.get('count'):
+            machines_to_start = [[i, False] for i in xrange(settings['count'])]
+            
+        else:
+            machines_to_start = [cluster, False]
+                
+        if not console.confirm('Do you wish to stage 3 servers, named: %s' % ', '.join(machines_to_start),
+                               default=False):
+            abort(colors.red('Aborting instance deployment.'))
+
+        for name, needs_static_ip in machines_to_start:
+            instance = create_instance('%s-%s-%s' % (env.stage, cluster, name),
+                stage = env.stage,
+                key_name = key_name or fab_config['key_name'],
+                location = fab_config['region'],
+                image_id = settings.get('initial_image') or settings.get('image') or fab_config['image'],
+                size = settings['size'],
+                server_type = settings.get('server_type'))
             instances.append(instance)
-            needsips.append([data, instance])
+            if needs_static_ip:
+                needsips.append([data, instance])
             if 'instances' not in data: data['instances'] = {}
-            data['instances']['master'] = instance.id
-
-        instance = create_instance('%s-%s-template' % (env.stage, cluster),
-                               stage = stage,
-                               key_name = fab_config['key_name'],
-                               location = fab_config['region'],
-                               image_id = settings['initial_image'],
-                               size = settings['size'],
-                               server_type = settings['server_type'])
-
-        instances.append(instance)
-        if 'instances' not in data: data['instances'] = {}
-        data['instances']['template'] = instance.id
+            data['instances'][name] = instance.id
+            fab_data['machines'][env.stage]['%s-%s-%s' % (env.stage, cluster, name)] = {'id': instance.id} # Backwards Compat
 
     # Wait for instances to start
     print colors.green('Waiting for instances to start...')
@@ -77,10 +90,9 @@ def go_prepare_autoscale(stage = None):
         ec2.associate_address(instance.id, address.public_ip)
         data['static-ip'] = address.public_ip
         print colors.green('Static IP Created')
-        
-    # Save and set hosts
-    # print colors.green('Settings Saved')
-    # autoscale_template_instances()
+    
+    update_instances()
+    setup_hosts(autoscale=True)
 
 def go_setup_autoscale_masters(stage = None):
     ''' Setup and install software on autoscale master (first) '''
@@ -88,7 +100,7 @@ def go_setup_autoscale_masters(stage = None):
     tags = ec2_instance(my_id).tags
     stage, cluster, instance_type = tags[u'Name'].split('-')
     if instance_type == 'master':
-        _go_setup_autoscale(stage)
+        return go_setup(stage)
 
 def go_setup_autoscale_templates(stage = None):
     ''' Setup and install software on autoscale templates (second!) '''
@@ -96,70 +108,74 @@ def go_setup_autoscale_templates(stage = None):
     tags = ec2_instance(my_id).tags
     stage, cluster, instance_type = tags[u'Name'].split('-')
     if instance_type != 'master':
-        _go_setup_autoscale(stage)
+        return go_setup(stage)
 
-def _go_setup_autoscale(stage = None):
-    ''' Base function for setup on masters and templates '''
+def go_setup(stage = None):
+    ''' Install the correct services on each machine '''
     stage = stage or env.stage
     if not stage:
         raise Exception(colors.red('No stage provided'))
 
-    # Now we're on the instance
+    # Set up hostname, instance data by introspecting tags
     my_id = run('curl http://169.254.169.254/latest/meta-data/instance-id')
-    address = run('curl http://169.254.169.254/latest/meta-data/public-hostname')
-
-    tags = ec2_instance(my_id).tags
-    stage, cluster, instance_type = tags[u'Name'].split('-')
-    data = {'stage': stage, 'server_type': fab_config.cluster(cluster)['server_type'], 'cluster': cluster, 'instance_type': instance_type}
+    instance = ec2_instance(my_id)
+    name = instance.tags[u'Name']
+    stage, cluster, instance_type = name.split('-')
     options = fab_config.cluster(cluster)
-
-    set_hostname(tags[u'Name'])
+    data = {'stage': stage, 'server_type': options.get('server_type'), 'cluster': cluster, 'instance_type': instance_type}
+    
+    set_hostname(name)
     set_data(data)
+    
+    # Determine if a master/slave relationship exists for databases in config - #TODO not sure how to unify these approaches
+    master = None    
+    if options.get('autoscale'):
+        if instance_type == 'template' and 'postgresql' in options['services']:
+            options['services']['postgresql']['slave'] = True
+            master = ec2_instance(fab_data.cluster(cluster)['instances']['master']).public_dns_name
+            replication = True
 
-    master = None
-    if instance_type == 'template' and 'postgresql' in options['services']:
-        options['services']['postgresql']['slave'] = True
-        master = ec2_instance(fab_data.cluster(cluster)['instances']['master']).public_dns_name
-
+    else:
+        slave = []
+        for db in ['mysql','postgresql','postgresql-client']:
+            slave.append(any(['slave' in values.get(db,{}) for name, values in fab_config['clusters'].iteritems()]))
+        replication = any(slave)
+    
     prepare_server()
-    install_services(my_id, tags[u'Name'], address, stage, options, replication = True, master = master)
+    install_services(my_id, name, instance.private_dns, stage, options, replication = True, master = master)
 
-    if 'pgpool' in options['services']:
+    if 'pgpool' in options['services']: #TODO: move this
         dbinstances = fab_data.cluster(options['with_db_cluster'])['instances']
         pgpool_set_hosts([ec2_instance(dbinstances['master']).public_dns_name, ec2_instance(dbinstances['template']).public_dns_name])
 
-    package_install('fabric')
-#    grab_from_web('http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip')
-#    grab_from_web('http://ec2-downloads.s3.amazonaws.com/CloudWatch-2010-08-01.zip')
-#    append('/home/ubuntu/.bashrc', 'export PATH=$PATH:/home/ubuntu/AutoScaling-2010-08-01/bin/:/home/ubuntu/CloudWatch-2010-08-01/bin/')
+    if options.get('autoscale'):
+        package_install('fabric')
+        #grab_from_web('http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip')
+        #grab_from_web('http://ec2-downloads.s3.amazonaws.com/CloudWatch-2010-08-01.zip')
+        #append('/home/ubuntu/.bashrc', 'export PATH=$PATH:/home/ubuntu/AutoScaling-2010-08-01/bin/:/home/ubuntu/CloudWatch-2010-08-01/bin/')
 
-    try:
-        put(os.path.join(env.conf['FILES'], 'rc.local.%s.sh' % data['server_type']),
-                       '/etc/rc.local', use_sudo = True)
-        sudo('chmod 755 /etc/rc.local')
-    except ValueError:
-        warn(colors.yellow('No rc.local file found for server type %s' % data['server_type']))
+        try:
+            put(os.path.join(env.conf['FILES'], 'rc.local.%s.sh' % options['server_type']),
+                '/etc/rc.local', use_sudo = True)
+            sudo('chmod 755 /etc/rc.local')
+        except ValueError:
+            warn(colors.yellow('No rc.local file found for server type %s' % options['server_type']))
 
-    import_string(options.get('post_setup'))()
+    if options.get('post_setup'):
+        import_string(options['post_setup'])()
 
-def go_deploy_autoscale(tagname, stage = None, force = False, use_existing = False):
+def go_deploy_tag(tagname, stage = None, force = False, use_existing = False, full = True):
     ''' Deploy tag 'tagname' to template servers.
-      Non-web servers get it too (although not with a virtualenv) so they have confs and fabric stuff '''
-    
+     Autoscaling Non-web servers get it too (although not with a virtualenv) so they have confs and fabric stuff '''
+
     stage = stage or env.stage
-    if not stage:
-        raise Exception(colors.red('No stage provided'))
-
     data = get_data()
+    options = fab_config.cluster(data['cluster'])
 
-    deploy_project(tagname, force = force, use_existing = use_existing, with_full_virtualenv = data['server_type'] != SERVER_TYPE_DB)
-    update_fab_deploy()
+    if options.get('autoscale') or 'uwsgi' in options['services'] or 'apache' in options['services']:
+        deploy_project(tagname, force = force, use_existing = use_existing, with_full_virtualenv = data.get('server_type') != SERVER_TYPE_DB)
 
-    make_active(tagname)
-
-    import_string(fab_config.cluster(data['cluster']).get('post_activate'))()
-
-    if data['server_type'] == SERVER_TYPE_WEB:
+    if options.get('server_type') == SERVER_TYPE_WEB:
         web_server_restart()
 
 def go_save_templates(stage = None):
@@ -213,23 +229,24 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
             raise Exception(colors.red('Launch config exists.  Use force=True to override or use_existing=True to keep going'))
 
 
-    if 'load-balancer' in values:
-        lb_values = values['load-balancer']
+    if 'load_balancer' in values:
+        lb_values = values['load_balancer']
         elbconn = ELBConnection(env.conf['AWS_ACCESS_KEY_ID'], env.conf['AWS_SECRET_ACCESS_KEY'],
                                 region = ec2_region('elasticloadbalancing.%s.amazonaws.com' % ec2_location()))
 
         try:
-            existing = elbconn.get_all_load_balancers(load_balancer_names = ['%s-load-balancer' % values['load-balancer']['cluster']])
+            existing = elbconn.get_all_load_balancers(load_balancer_names = ['%s-load-balancer' % values['load_balancer']['name']])
         except BotoServerError:
             existing = None
         if existing:
-            #if force:
-            #    existing[0].delete()
-            #elif not use_existing:
+            if use_existing:
+                balancer = existing
+            else:# To avoid deleting load balancers on live servers, LBs won't be deleted by fab-deploy
                 raise Exception(colors.red('Load balancer exists.  Use use_existing=True to keep going or manually delete.'))
-
+            #TODO: warn if load balancer instances already exist, this will block autoscaling from using it
+            
         if not existing or force:
-            balancer = elbconn.create_load_balancer(lb_values['cluster'], zones = [fab_config['location']],
+            balancer = elbconn.create_load_balancer(lb_values['name'], zones = [fab_config['availability_zone']],
                                             listeners = [(v['port'], v['port'], v['protocol']) for v in lb_values['listeners']])
             print colors.green('Load Balancer created.')
 
@@ -241,13 +258,6 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
             if 'cookie-cluster' in lb_values:
                 elbconn.create_app_cookie_stickiness_policy(lb_values['cookie-cluster'], balancer.name, '%s-cookie-policy' % cluster)
                 print colors.green('  Cookie Stickiness policy attached.')
-
-            # For some reason, doing this breaks the connection to the ASG.
-#            if values['instances'].get('template'):
-#                ec2 = ec2_connection()
-#                print ec2_instance(values['instances']['template'])
-#                elbconn.register_instances(balancer.cluster, [values['instances']['template']])
-#                print colors.green('  Existing template instance added.')
     else:
         balancer = None
 
@@ -258,13 +268,13 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
         print colors.green('Launch Configuration %s Created.' % lc.name)
 
     # Autoscaling Group
-
+    #TODO: make sure this stuff is installed
     if not as_existing or force:
         data = {'cluster': cluster,
                 'region': ec2_location(),
                 'availability_zone': fab_config['availability_zone'],
-                'min_size': values['size_range'][0],
-                'max_size': values['size_range'][1],
+                'min_size': values['count_range'][0],
+                'max_size': values['count_range'][1],
                 'lcname': lc.name,
                 'lbcmd': '--load-balancers ' + balancer.name if balancer else '',
                 'min_cpu': values['cpu_range'][0],
@@ -329,6 +339,11 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
                 --statistic Average \
                 --threshold %(min_cpu)s \
                 --alarm-actions %(scale_down_policy)s''' % data)
+
+        if balancer:
+            print colors.green('Autoscaling done.  Load balancer is %s' % balancer.dns_name)
+            print balancer.__dict__
+            #webbrowser.open(balancer.dns_name)
 
 #        ag = AutoScalingGroup(connection = conn,
 #                              group_name = cluster,
@@ -396,3 +411,33 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
 #                         breach_duration = 120)
 #            conn.create_trigger(tr)
 #            print colors.green('  Trigger attached.')
+
+@runs_once
+def go_stop_autoscale(stage = None, clusters = None):
+    ''' Stops autoscaling clusters.  Specify by stage (here or in env.stage), or names of clusters, not both.  Clusters takes precedence'''
+    env.stage = stage or env.stage
+    if env.stage and not clusters:
+        clusters = fab_config['clusters'].keys()
+    
+    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
+                           region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
+
+    for cluster in clusters:
+        print colors.blue('Stopping group %s' % cluster)
+        as_existing = conn.get_all_groups(names = [cluster])
+        if not as_existing:
+            abort(colors.red('Could not find autoscaling group %s' % cluster))
+        as_existing[0].shutdown_instances()
+        
+    print 'Waiting for instances to shut down...'
+    
+    for cluster in clusters:
+        as_existing = conn.get_all_groups(names = [cluster])
+        while as_existing[0].instances:
+            sleep(1)
+            as_existing = conn.get_all_groups(names = [cluster])
+    sleep(5)
+    
+    for cluster in clusters:
+        as_existing = conn.get_all_groups(names = [cluster])
+        as_existing[0].delete()

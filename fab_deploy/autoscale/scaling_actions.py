@@ -18,7 +18,7 @@ def update_db_servers(stage = None, cluster = None):
     else:
         data = get_data()
 
-    config = fab_config.get(data['cluster'])
+    config = fab_config.cluster(data['cluster'])
 
     if config['server_type'] == SERVER_TYPE_DB:
         pass
@@ -27,10 +27,11 @@ def update_db_servers(stage = None, cluster = None):
     else:
         raise NotImplementedError('Cound not find db autoscale cluster')
 
-    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.status) == 'running']
+    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.update()) == 'running']
 
     # We now have all of the db servers...
     pgpool_set_hosts(*servers)
+    sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
 def sync_data():
     ''' Sync postgres data from master to self (slave), using pgpool settings to find current master.  Assume at /data '''
@@ -52,7 +53,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
     my_id = run('curl http://169.254.169.254/latest/meta-data/instance-id')
     data = get_data()
 
-    data = fab_data.get(data['cluster'])
+    data = fab_data.cluster(data['cluster'])
 
     if old_node_id == old_master_id:
         # We broke the master!

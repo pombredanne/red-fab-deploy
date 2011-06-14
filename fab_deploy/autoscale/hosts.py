@@ -1,9 +1,10 @@
 from fab_deploy.autoscale.server_data import get_data
-from fab_deploy.aws import ec2_instance, ec2_instances
+from fab_deploy.aws import ec2_instance, ec2_instances, ec2_instance_with
 from fab_deploy.conf import fab_config, fab_data
 from fab_deploy.constants import SERVER_TYPE_DB, SERVER_TYPE_WEB
-from fabric.api import env
+from fabric.api import env, runs_once
 
+@runs_once
 def set_hosts(hosts):
     ''' Set hosts based on instance id or public dns name '''
     env.hosts = []
@@ -14,6 +15,7 @@ def set_hosts(hosts):
             host = host.public_dns_name
         env.hosts.append('ubuntu@%s' % host)
 
+@runs_once
 def localhost():
     ''' Sets hosts to localhost '''
     set_hosts(['localhost'])
@@ -28,21 +30,7 @@ def find_servers(stage, cluster):
         (stage == str(server.tags.get('Stage')) and (server_type is None or server_type == str(server.tags.get('Server Type'))))\
             or server.image_id == data.get('image')]
 
-def autoscale_template_instances(stage = None, server_type = None):
-    ''' Set hosts to master and template instances *only* for given stage/server_type '''
-    env.stage = stage or env.stage
-    
-    hosts = []
-    for cluster, settings in fab_config['clusters'].iteritems():
-        if server_type and not settings.get('server_type') == server_type:
-            continue
-    
-        if u'master' in fab_data['clusters'][cluster]['instances']:
-            hosts.append(fab_data['clusters'][cluster]['instances']['master'])
-        hosts.append(fab_data['clusters'][cluster]['instances']['template'])
-        
-    set_hosts(hosts)
-
+@runs_once
 def autoscaling_servers(stage = None, cluster = None):
     ''' Set hosts to *all* servers with same stage/cluster as current machine, or with provided stage/cluster'''
     if stage: # For debugging
@@ -52,6 +40,7 @@ def autoscaling_servers(stage = None, cluster = None):
 
     set_hosts(find_servers(data['stage'], data['cluster']))
 
+@runs_once
 def autoscaling_web_servers(stage = None, cluster = None):
     ''' Set hosts to *running* web servers related to current machine
         (either in same cluster if web, or in associated cluster if available), 
@@ -75,6 +64,7 @@ def autoscaling_web_servers(stage = None, cluster = None):
     # We now have all of the web servers...
     set_hosts(servers)
 
+@runs_once
 def original_master(stage = None, cluster = None):
     ''' Set hosts to original master db related to current machine,
     (either in same cluster if db, or in associated cluster if available), 
@@ -92,15 +82,10 @@ def original_master(stage = None, cluster = None):
         data['cluster'] = config['with_db_cluster']
     else:
         raise NotImplementedError('Cound not find db autoscale cluster')
-
-    config = fab_config.get(data['cluster'])
-    master_id = data['nodes'].get('master')
-
-    try:
-        master = ec2_instance(master_id)
-        if str(master.state) == 'running':
-            set_hosts([master])
-        else:
-            set_hosts([])
-    except:
+    
+    master = ec2_instance_with(lambda instance: instance.tags.get(u'Name') == '%s-%s-master' % (data['stage'], data['cluster']))
+    if str(master.state) == 'running':
+        set_hosts([master])
+    else:
         set_hosts([])
+    set_hosts([])

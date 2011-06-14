@@ -222,34 +222,37 @@ def create_instance(name,**kwargs):
 		fabric.api.abort(fabric.colors.red("No image was found that matched id %s" % image_id))
 
 def deploy_instances(stage='development',key_name=None):
-	""" Deploy instances based on stage type """
-	stage_exists(stage)
-	if not key_name:
-		fabric.api.abort(fabric.colors.red("Must supply valid key_name."))
+	from fab_deploy.autoscale.autoscale import go_start
+	return go_start(stage, key_name)
 
-	if not fabric.contrib.console.confirm("Do you wish to stage %s servers with the following names: %s?" % (stage, ', '.join(_get_stage_machines(stage))), default=False):
-		fabric.api.abort(fabric.colors.red("Aborting instance deployment."))
-
-	# Create new instances
-	PROVIDER = get_provider_dict()
-	for name in PROVIDER['machines'][stage]:
-		inst = PROVIDER['machines'][stage][name]
-		if 'id' not in inst or not inst['id']:
-			instance = create_instance(name,
-				key_name	  = key_name,
-				image_id	  = inst.get('image',None),
-				instance_type = inst.get('size','m1.small'),
-				placement	 = inst.get('placement','us-east-1b'), #TODO: defaults file
-				stage = stage,
-				server_type = inst.get('server_type')
-				)
-			inst.update({'id': instance.id})
-
-			PROVIDER['machines'][stage][name] = inst
-		else:
-			fabric.api.warn(fabric.colors.yellow("%s machine %s already exists" % (stage,name)))
-	
-	write_conf(PROVIDER)
+#	""" Deploy instances based on stage type """
+#	stage_exists(stage)
+#	if not key_name:
+#		fabric.api.abort(fabric.colors.red("Must supply valid key_name."))
+#
+#	if not fabric.contrib.console.confirm("Do you wish to stage %s servers with the following names: %s?" % (stage, ', '.join(_get_stage_machines(stage))), default=False):
+#		fabric.api.abort(fabric.colors.red("Aborting instance deployment."))
+#
+#	# Create new instances
+#	PROVIDER = get_provider_dict()
+#	for name in PROVIDER['machines'][stage]:
+#		inst = PROVIDER['machines'][stage][name]
+#		if 'id' not in inst or not inst['id']:
+#			instance = create_instance(name,
+#				key_name	  = key_name,
+#				image_id	  = inst.get('image',None),
+#				instance_type = inst.get('size','m1.small'),
+#				placement	 = inst.get('placement','us-east-1b'), #TODO: defaults file
+#				stage = stage,
+#				server_type = inst.get('server_type')
+#				)
+#			inst.update({'id': instance.id})
+#
+#			PROVIDER['machines'][stage][name] = inst
+#		else:
+#			fabric.api.warn(fabric.colors.yellow("%s machine %s already exists" % (stage,name)))
+#	
+#	write_conf(PROVIDER)
 
 def update_instances():
 
@@ -268,20 +271,22 @@ def update_instances():
 			if 'id' in PROVIDER['machines'][stage][name]:
 				id = PROVIDER['machines'][stage][name]['id']
 				for instance in list_instances():
-					if instance.__dict__['id'] == id:
+					if getattr(instance, 'id', None) == id:
 
-						image_id	= instance.__dict__.get('image_id')
-						placement   = instance.__dict__.get('placement')
-						private_ip  = [instance.__dict__.get('private_ip_address')]
-						private_dns = [instance.__dict__.get('private_dns_name')]
-						public_ip   = [instance.__dict__.get('dns_name')]
+						image_id	= getattr(instance, 'image_id', None)
+						placement   = getattr(instance, 'placement', None)
+						private_ip  = [getattr(instance, 'private_ip_address', None)]
+						private_dns = [getattr(instance, 'private_dns_name', None)]
+						public_dns   = [getattr(instance, 'dns_name', None)]
 						
 						info = {
 							'image'	   : image_id,
 							'placement'   : placement,
 							'private_ip'  : private_ip,
 							'private_dns' : private_dns,
-							'public_ip'   : public_ip,
+							'public_ip'   : public_dns,
+							'private_address': private_dns[0],
+							'public_address'  : public_dns[0]
 						}
 						PROVIDER['machines'][stage][name].update(info)
 

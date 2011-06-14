@@ -47,7 +47,8 @@ def ec2_instance(id):
 def ec2_instance_with(func):
     ''' Returns the first instance that func(instance) returns True for '''
     ec2 = ec2_connection()
-    return [r.instances[0] for r in ec2.get_all_instances if func(r.instances[0])][0]
+    instances = [r.instances[0] for r in ec2.get_all_instances if func(r.instances[0])]
+    return instances[0] if instances else None
 
 def create_bucket_if_needed(name):
     opts = aws_connection_opts()

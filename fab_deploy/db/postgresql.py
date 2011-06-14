@@ -197,7 +197,8 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 
 def pgpool_set_hosts(*hosts):
 	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)	
-	for i, slave in enumerate(*hosts):
-		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave),
+	for i, slave in enumerate(hosts):
+		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave.public_dns_name),
 									'backend_port%d = 5432' % i,
 									'backend_weight%d = 1' % i], use_sudo=True)
+	fabric.api.sudo('service pgpool restart') #TODO: reload isn't working for some reason

@@ -8,6 +8,10 @@ import os
 import simplejson
 import sys
 
+CLUSTER_DEFAULTS = {
+    'size': 'm1.small',
+}
+
 def settings(settings_module):
     ''' 
     Load python dictionary with settings in it.
@@ -17,6 +21,7 @@ def settings(settings_module):
     '''
     
     sys.path.insert(0, '')
+    sys.path.insert(1, '/srv/active')
     
     attempts = []
 
@@ -91,6 +96,11 @@ class FabDeployConfig(object):
         
         if hasattr(env, 'fab_deploy_settings'):
             self.load_python_settings(env.fab_deploy_settings)
+            
+        for settings in self.config['clusters'].values():
+            for default, value in CLUSTER_DEFAULTS.iteritems():
+                if default not in settings:
+                    settings[default] = value
             
         update_env()
         

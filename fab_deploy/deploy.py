@@ -36,28 +36,30 @@ def go(stage="development", key_name='ec2.development'):
 	update_instances()
 
 def go_setup(stage="development"):
-	"""
-	Install the correct services on each machine
-	
-    $ fab -i deploy/[your private SSH key here] set_hosts go_setup
-	"""
-	stage_exists(stage)
-	PROVIDER = get_provider_dict()
-
-	# Determine if a master/slave relationship exists for databases in config
-	slave = []
-	for db in ['mysql','postgresql','postgresql-client']:
-		slave.append(any(['slave' in PROVIDER['machines'][stage][name].get('services',{}).get(db,{}) for name in PROVIDER['machines'][stage]]))
-	replication = any(slave)
-	# Begin installing and setting up services
-	for name in PROVIDER['machines'][stage]:
-		node_data = PROVIDER['machines'][stage][name]
-		address = node_data['public_ip'][0]
-		if address == fabric.api.env.host:
-			set_hostname(name)
-			prepare_server()
-			install_services(node_data['id'], name, address, stage, node_data, replication=replication)
-			import_string(node_data.get('post_setup'))()
+	from fab_deploy.autoscale.autoscale import go_setup as go_setup_new
+	return go_setup_new(stage)
+#	"""
+#	Install the correct services on each machine
+#	
+#    $ fab -i deploy/[your private SSH key here] set_hosts go_setup
+#	"""
+#	stage_exists(stage)
+#	PROVIDER = get_provider_dict()
+#
+#	# Determine if a master/slave relationship exists for databases in config
+#	slave = []
+#	for db in ['mysql','postgresql','postgresql-client']:
+#		slave.append(any(['slave' in values.get(db,{}) for name, values in PROVIDER['machines'][stage].iteritems()]))
+#	replication = any(slave)
+#	# Begin installing and setting up services
+#	for name in PROVIDER['machines'][stage]:
+#		node_data = PROVIDER['machines'][stage][name]
+#		address = node_data['public_ip'][0]
+#		if address == fabric.api.env.host:
+#			set_hostname(name)
+#			prepare_server()
+#			install_services(node_data['id'], name, address, stage, node_data, replication=replication)
+#			import_string(node_data.get('post_setup'))()
 
 def install_services(id, name, address, stage, node_data, **kwargs):
 	''' Install all services '''
@@ -89,26 +91,28 @@ def install_services(id, name, address, stage, node_data, **kwargs):
 			fabric.api.warn(fabric.colors.yellow('%s is not an available service' % service))
 
 def go_deploy(stage="development", tagname="trunk", username="ubuntu", full=True, use_existing=False):
-	"""
-	Deploy project and make active on any machine with server software
-	
-	$ fab -i deploy/[your private SSH key here] set_hosts go_deploy
-	"""
-	stage_exists(stage)
-	PROVIDER = get_provider_dict()
-	for name in PROVIDER['machines'][stage]:
-		instance_dict = PROVIDER['machines'][stage][name]
-		host = instance_dict['public_ip'][0]
-
-		if host == fabric.api.env.host:
-			service = instance_dict['services']
-			# If any of these services are listed then deploy the project
-
-			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
-				if full:
-					deploy_full(tagname,force=True,username=username)
-				else:
-					deploy_project(tagname,force=True,username=username)
+	from fab_deploy.autoscale.autoscale import go_deploy_tag
+	return go_deploy_tag(tagname, stage, username, use_existing, full)
+#	"""
+#	Deploy project and make active on any machine with server software
+#	
+#	$ fab -i deploy/[your private SSH key here] set_hosts go_deploy
+#	"""
+#	stage_exists(stage)
+#	PROVIDER = get_provider_dict()
+#	for name in PROVIDER['machines'][stage]:
+#		instance_dict = PROVIDER['machines'][stage][name]
+#		host = instance_dict['public_ip'][0]
+#
+#		if host == fabric.api.env.host:
+#			service = instance_dict['services']
+#			# If any of these services are listed then deploy the project
+#
+#			if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
+#				if full:
+#					deploy_full(tagname,force=True,username=username)
+#				else:
+#					deploy_project(tagname,force=True,username=username)
 	
 def deploy_full(tagname, force=False, username="ubuntu", use_existing=False):
 	""" 
@@ -144,7 +148,6 @@ def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, 
 		pip_install(dir = tag_dir)
 	
 	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
-	#fabric.api.env.conf.post_activate.get(data['server-type'], lambda: None)() #TODO #XXX
 
 def make_src_dir(username='ubuntu'):
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """
