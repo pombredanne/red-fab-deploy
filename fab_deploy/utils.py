@@ -223,16 +223,15 @@ def list_hosts():
 
 def stage(st):
     env.stage = st
-    return setup_hosts()
 
 def cluster(name):
-    return setup_hosts(clusters = [name])
+    env.clusters = [name]
     
 def server_type(type):
-    return setup_hosts(server_types = [type])
+    env.server_types = [type]
 
 def instance_type(type):
-    return setup_hosts(instance_types = [type])
+    env.instance_types = [type]
 
 def setup_hosts(clusters = None, server_types = None, instance_types = None):
     #HAAAAAAAAAAAAACK
@@ -245,7 +244,14 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
     env.command = FakeString(env.command)
     ####
     
+    set_hosts(find_instances(clusters, server_types, instance_types))
+    
+def find_instances(clusters = None, server_types = None, instance_types = None):
+    
     print fabric.colors.green('Finding hosts...')
+    clusters = env.clusters = clusters or getattr(env, 'clusters', None)
+    server_types = env.server_types = server_types or getattr(env, 'server_types', None)
+    instance_types = env.server_types = clusters or getattr(env, 'instance_types', None)
     
     from fab_deploy.aws import aws_connection_opts, ec2_connection
     from fab_deploy.conf import fab_config
@@ -301,4 +307,4 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
 #    instances = sorted(instances.iteritems(),
 #                       key=lambda (k, value): these_instance_types.index(value['instance_type']) if value['instance_type'] in these_instance_types else 999)
 
-    set_hosts(instances.keys())
+    return instances.keys()

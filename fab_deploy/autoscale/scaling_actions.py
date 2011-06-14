@@ -1,36 +1,31 @@
 from boto.ec2.autoscale import AutoScaleConnection
-from fab_deploy.autoscale.hosts import find_servers
+#from fab_deploy.autoscale.hosts import find_servers
 from fab_deploy.autoscale.server_data import get_data
 from fab_deploy.aws import ec2_connection, aws_connection_opts, ec2_instance_with
 from fab_deploy.conf import fab_config, fab_data
 from fab_deploy.constants import SERVER_TYPE_DB
 from fab_deploy.db.postgresql import pgpool_set_hosts
+from fab_deploy.utils import find_instances
 from fabric.operations import local, run, sudo
 from fabric.state import env
 import re
 
-def update_db_servers(stage = None, cluster = None):
+def update_db_servers(cluster = None):
     
     ''' Find *running* db servers associated with current host, or stage/cluster if provided.  Set to pgpool hosts.'''
 
-    if stage and cluster: # For debugging
-        data = {'stage': stage, 'cluster': cluster}
-    else:
-        data = get_data()
+    cluster = cluster or get_data()['cluster']
 
-    config = fab_config.cluster(data['cluster'])
+    config = fab_config.cluster(cluster)
 
     if config['server_type'] == SERVER_TYPE_DB:
         pass
     elif config.get('with_db_cluster'):
-        data['cluster'] = config['with_db_cluster']
+        cluster = config['with_db_cluster']
     else:
         raise NotImplementedError('Cound not find db autoscale cluster')
 
-    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.state) == 'running']
-
-    # We now have all of the db servers...
-    pgpool_set_hosts(*servers)
+    pgpool_set_hosts(*find_instances(clusters=[cluster]))
     sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
 def sync_data():
