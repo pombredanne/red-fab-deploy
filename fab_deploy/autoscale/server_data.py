@@ -23,3 +23,4 @@ def get_data():
 def set_data(data):
     ''' Save stage, server type, and cluster name, and instance_type to server.  Takes dict of those. '''
     sudo('echo "%s" > /etc/red_fab_deploy_data' % dumps(data).replace('"', '\"'))
+    sudo('echo "%s" > /etc/red_fab_deploy_cluster' % data['cluster'])

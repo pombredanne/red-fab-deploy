@@ -195,7 +195,7 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 	#fabric.api.sudo('pgpool -c -f /etc/pgpool.conf')
 	fabric.api.sudo('service pgpool start')
 
-def pgpool_set_hosts(*hosts):
+def pgpool_set_hosts(hosts):
 	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)	
 	for i, slave in enumerate(hosts):
 		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave.public_dns_name),

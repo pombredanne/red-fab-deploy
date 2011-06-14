@@ -1,7 +1,6 @@
 from boto.ec2.autoscale import AutoScaleConnection
-#from fab_deploy.autoscale.hosts import find_servers
 from fab_deploy.autoscale.server_data import get_data
-from fab_deploy.aws import ec2_connection, aws_connection_opts, ec2_instance_with
+from fab_deploy.aws import ec2_connection, aws_connection_opts, ec2_instance_with, ec2_region, ec2_location
 from fab_deploy.conf import fab_config, fab_data
 from fab_deploy.constants import SERVER_TYPE_DB
 from fab_deploy.db.postgresql import pgpool_set_hosts
@@ -9,10 +8,11 @@ from fab_deploy.utils import find_instances
 from fabric.operations import local, run, sudo
 from fabric.state import env
 import re
+#from fab_deploy.autoscale.hosts import find_servers
 
 def update_db_servers(cluster = None):
     
-    ''' Find *running* db servers associated with current host, or stage/cluster if provided.  Set to pgpool hosts.'''
+    ''' Find *running* db servers associated with current host, or cluster if provided.  Set to pgpool hosts.'''
 
     cluster = cluster or get_data()['cluster']
 
@@ -25,7 +25,9 @@ def update_db_servers(cluster = None):
     else:
         raise NotImplementedError('Cound not find db autoscale cluster')
 
-    pgpool_set_hosts(*find_instances(clusters=[cluster], instance_types=['autoscale']))
+    instances = find_instances(clusters=[cluster])
+    instances.sort(key=lambda instance: instance.launch_time) # so master is first
+    pgpool_set_hosts(instances)
     sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
 def sync_data():
@@ -65,7 +67,8 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
         pass
 
     # Kill the old server
-    conn = AutoScaleConnection(**aws_connection_opts())
+    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
+                               region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
 
     instance = ec2_instance_with(lambda i: i.public_dns_name == old_host_name)
     conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)

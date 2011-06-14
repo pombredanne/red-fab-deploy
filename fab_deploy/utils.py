@@ -216,7 +216,7 @@ def combine(*dikts):
         master.update(dikt)
     return master
 
-
+@runs_once
 def list_hosts():
     ''' Lists hosts! Useful for debugging. '''
     print env.hosts
@@ -245,14 +245,13 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
     env.command = FakeString(env.command)
     ####
     
-    set_hosts(find_instances(clusters, server_types, instance_types))
+    set_hosts(find_instances(clusters or getattr(env, 'clusters', None),
+                             server_types or getattr(env, 'server_types', None),
+                             instance_types or getattr(env, 'instance_types', None)))
     
 def find_instances(clusters = None, server_types = None, instance_types = None):
     
     print fabric.colors.green('Finding hosts...')
-    clusters = clusters or getattr(env, 'clusters', None)
-    server_types = server_types or getattr(env, 'server_types', None)
-    instance_types = instance_types or getattr(env, 'instance_types', None)
     if isinstance(clusters, basestring):
         clusters = [clusters]
     if isinstance(server_types, basestring):
