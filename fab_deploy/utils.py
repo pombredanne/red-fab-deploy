@@ -239,24 +239,24 @@ def setup_hosts(server_type = None, autoscale = None):
         hosts_found = False
         if server_type and settings.get('server_type') != server_type:
             continue
-        if autoscale in [None, False]:
-            try:
+        try:
+            if autoscale in [None, False]:
                 for ip in fab_data['machines'][env.stage][cluster]['public_ip']:
                     if env.hosts and 'ubuntu@%s' % ip not in env.hosts:
                         continue
                     hosts.append(ip)
                     hosts_found = True
 
-            except KeyError, IndexError:
-                pass
+            if autoscale in [None, True]:
+                if u'master' in fab_data['clusters'][cluster]['instances']:
+                    hosts.append(fab_data['clusters'][cluster]['instances']['master'])
+                hosts.append(fab_data['clusters'][cluster]['instances']['template'])
+                hosts_found = True
 
-        if autoscale in [None, True]:
-            if u'master' in fab_data['clusters'][cluster]['instances']:
-                hosts.append(fab_data['clusters'][cluster]['instances']['master'])
-            hosts.append(fab_data['clusters'][cluster]['instances']['template'])
-            hosts_found = True
-
-        if not hosts_found:
-            fabric.api.warn(fabric.colors.yellow('No public IPs found for %s in %s' % (cluster, env.stage)))
+        except KeyError, IndexError:
+            pass
+        
+        #if not hosts_found:
+        #    fabric.api.warn(fabric.colors.yellow('No public IPs found for %s in %s' % (cluster, env.stage)))
              
     set_hosts(hosts)

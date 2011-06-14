@@ -4,7 +4,6 @@ from fab_deploy.conf import fab_config, fab_data
 from fab_deploy.constants import SERVER_TYPE_DB, SERVER_TYPE_WEB
 from fabric.api import env, runs_once
 
-@runs_once
 def set_hosts(hosts):
     ''' Set hosts based on instance id or public dns name '''
     env.hosts = []
@@ -15,7 +14,6 @@ def set_hosts(hosts):
             host = host.public_dns_name
         env.hosts.append('ubuntu@%s' % host)
 
-@runs_once
 def localhost():
     ''' Sets hosts to localhost '''
     set_hosts(['localhost'])
@@ -30,8 +28,7 @@ def find_servers(stage, cluster):
         (stage == str(server.tags.get('Stage')) and (server_type is None or server_type == str(server.tags.get('Server Type'))))\
             or server.image_id == data.get('image')]
 
-@runs_once
-def autoscaling_servers(stage = None, cluster = None):
+def autoscaling_servers(stage = None, cluster = None): #TODO: should these be merged into setup_hosts?
     ''' Set hosts to *all* servers with same stage/cluster as current machine, or with provided stage/cluster'''
     if stage: # For debugging
         data = {'stage': stage, 'cluster': cluster}
@@ -40,7 +37,6 @@ def autoscaling_servers(stage = None, cluster = None):
 
     set_hosts(find_servers(data['stage'], data['cluster']))
 
-@runs_once
 def autoscaling_web_servers(stage = None, cluster = None):
     ''' Set hosts to *running* web servers related to current machine
         (either in same cluster if web, or in associated cluster if available), 
@@ -51,7 +47,7 @@ def autoscaling_web_servers(stage = None, cluster = None):
     else:
         data = get_data()
 
-    config = fab_config.get(data['cluster'])
+    config = fab_config.cluster(data['cluster'])
     if config.get('server_type') == SERVER_TYPE_WEB:
         pass
     elif config.get('with_web_cluster'):
@@ -59,12 +55,11 @@ def autoscaling_web_servers(stage = None, cluster = None):
     else:
         raise NotImplementedError('Cound not find web autoscale cluster')
 
-    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.status) == 'running']
+    servers = [server for server in find_servers(data['stage'], data['cluster']) if str(server.update()) == 'running']
 
     # We now have all of the web servers...
     set_hosts(servers)
 
-@runs_once
 def original_master(stage = None, cluster = None):
     ''' Set hosts to original master db related to current machine,
     (either in same cluster if db, or in associated cluster if available), 
