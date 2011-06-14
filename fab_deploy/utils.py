@@ -234,6 +234,7 @@ def instance_type(type):
     env.instance_types = [type]
 
 def setup_hosts(clusters = None, server_types = None, instance_types = None):
+    from fab_deploy.autoscale.hosts import set_hosts
     #HAAAAAAAAAAAAACK
     class FakeString(str):
         def __init__(self, *args, **kwargs):
@@ -255,7 +256,6 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
     
     from fab_deploy.aws import aws_connection_opts, ec2_connection
     from fab_deploy.conf import fab_config
-    from fab_deploy.autoscale.hosts import set_hosts
     from fab_deploy.aws import ec2_region, ec2_location, ec2_instance
     ec2 = ec2_connection()
     
