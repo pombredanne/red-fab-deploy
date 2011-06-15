@@ -121,7 +121,11 @@ def go_setup(stage = None):
     name = instance.tags[u'Name']
     stage, cluster, instance_type = name.split('-')
     options = fab_config.cluster(cluster)
-    data = {'stage': stage, 'server_type': options.get('server_type'), 'cluster': cluster, 'instance_type': instance_type}
+    data = {'stage': stage,
+            'server_type': options.get('server_type'),
+            'cluster': cluster,
+            'instance_type': instance_type,
+            'master_ip': options.get('static_ip', fab_config.cluster(options['with_db_cluster'])['static_ip'])}
     
     set_hostname(name)
     set_data(data)

@@ -10,11 +10,13 @@ from fabric.state import env
 import re
 #from fab_deploy.autoscale.hosts import find_servers
 
-def update_db_servers(cluster = None):
+
+
+def _db_servers_for_cluster(cluster = None, master_ip = None):
     
-    ''' Find *running* db servers associated with current host, or cluster if provided.  Set to pgpool hosts.'''
 
     cluster = cluster or get_data()['cluster']
+    master_ip = master_ip or get_data()['master_ip']
 
     config = fab_config.cluster(cluster)
 
@@ -26,31 +28,33 @@ def update_db_servers(cluster = None):
         raise NotImplementedError('Cound not find db autoscale cluster')
 
     instances = find_instances(clusters=[cluster])
-    instances.sort(key=lambda instance: instance.launch_time) # so master is first
-    pgpool_set_hosts(instances)
+    master = [i for i in instances if i.ip_address == master_ip][0]
+    slaves = [i for i in instances if i.ip_address != master_ip]
+    
+    return master, slaves
+
+def update_db_servers(cluster = None, master_ip = None):
+    ''' Find *running* db servers associated with current host, or cluster if provided.  Set to pgpool hosts.'''
+    pgpool_set_hosts(*_db_servers_for_cluster(cluster, master_ip))
     sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
-def sync_data():
-    ''' Sync postgres data from master to self (slave), using pgpool settings to find current master.  Assume at /data '''
+def sync_data(cluster = None):
+    ''' Sync postgres data from master to self (slave)'''
     
-    config = open('/etc/pgpool.conf').read()
-    match = re.search('backend_hostname0\s*=\s*(\w-.)', config)
-    master = match.group(1)
-
-    local('''scp -ri %s ubuntu@%s:/data/* /data/''' % (env.key_filename[0], master))
+    master, _ = _db_servers_for_cluster(cluster)[0]
+    
+    local('''scp -ri %s ubuntu@%s:/data/* /data/''' % (env.key_filename[0], master.public_dns_name))
     local('chown -R postgres:postgres /data')
 
 
 def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ''' On db failover, promotes slave to master if necessary.  Deems old host unhealthy.
     
-    Runs on web host (local) when failover occurs.  Accesses new master db host (run/sudo).'''
+    Run by web host (local) when failover occurs.  Runs on new master db host (run/sudo).'''
 
     ec2 = ec2_connection()
     my_id = run('curl http://169.254.169.254/latest/meta-data/instance-id')
     data = get_data()
-
-    data = fab_data.cluster(data['cluster'])
 
     if old_node_id == old_master_id:
         # We broke the master!
@@ -58,7 +62,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
         sudo('touch /data/failover')
 
         # Give master ip address
-        ec2.associate_address(my_id, fab_data['static-ip'])
+        ec2.associate_address(my_id, data['master_ip'])
         sudo('service pgpool reload')
         #local('pcp_attach_node 10 127.0.0.1 9898 pgpool %s 0' % settings['services']['postgresql']['password'])
 

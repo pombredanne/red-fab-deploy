@@ -7,8 +7,10 @@ from fabric.api import env, runs_once
 def set_hosts(hosts):
     ''' Set hosts based on instance id or public dns name '''
     env.hosts = []
+    if not isinstance(hosts, (list, tuple)):
+        hosts = [hosts]
     for host in hosts:
-        if isinstance(host, str) and host.startswith('i-'):
+        if isinstance(host, basestring) and host.startswith('i-'):
             host = ec2_instance(host)
         if not isinstance(host, basestring):
             host = host.public_dns_name
