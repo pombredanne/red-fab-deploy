@@ -3,7 +3,7 @@ from fab_deploy.autoscale.server_data import get_data
 from fab_deploy.aws import ec2_connection, aws_connection_opts, ec2_instance_with, ec2_region, ec2_location
 from fab_deploy.conf import fab_config, fab_data
 from fab_deploy.constants import SERVER_TYPE_DB
-from fab_deploy.db.postgresql import pgpool_set_hosts
+from fab_deploy.db.postgresql import pgpool_set_hosts, copy_master_data
 from fab_deploy.utils import find_instances
 from fabric.operations import local, run, sudo
 from fabric.state import env
@@ -43,9 +43,12 @@ def sync_data(cluster = None):
     
     master, slaves = _db_servers_for_cluster(cluster)
     
-    local('''scp -ri %s ubuntu@%s:/data/* /data/''' % (env.key_filename[0], master.public_dns_name))
-    local('chown -R postgres:postgres /data')
+    local('sudo postgresql stop')
+    
+    local('chmod 600 %s' % env.key_filename[0]) #TODO: move this
+    local('echo "StrictHostKeyChecking yes" >> ~/.ssh/config')
 
+    copy_master_data(master, 'localhost')
 
 def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ''' On db failover, promotes slave to master if necessary.  Deems old host unhealthy.

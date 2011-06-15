@@ -132,14 +132,7 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 			"primary_conninfo = 'host=%s port=5432 user=%s password=%s'" % (master, options['user'], options['password']),
 			"trigger_file = '/data/failover'"], True)
 		
-		ssh_master = 'ssh -i %s ubuntu@%s' % (fabric.api.env.key_filename[0], master)
-		ssh_slave = 'ssh -i %s ubuntu@%s' % (fabric.api.env.key_filename[0], address)
-		
-		fabric.api.local('%s echo' % ssh_master) # To make sure warnings are cleared
-		fabric.api.local('%s echo' % ssh_slave) # To make sure warnings are cleared
-		
-		fabric.api.local('%s sudo tar czvf - /data | %s sudo tar xzvf - -C /' % (ssh_master, ssh_slave))
-		fabric.api.sudo('chown -R postgres:postgres /data')
+		copy_master_data(master, address)
 		#XXX: create user nobody? don't need to create users on both i suppose
 	if options.get('support_pgpool'):
 		if 'nobody' not in fabric.api.sudo('''su postgres -c "psql -c '\du'"'''):
@@ -151,6 +144,19 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 	
 	fabric.api.sudo('service postgresql start')
 	
+def copy_master_data(master, slave):
+	ssh_master = 'ssh -i %s ubuntu@%s' % (fabric.api.env.key_filename[0], master)
+	ssh_slave = 'ssh -i %s ubuntu@%s' % (fabric.api.env.key_filename[0], slave)
+	
+	fabric.api.local('chmod 600 %s' % fabric.api.env.key_filename[0]) #TODO: move this
+	fabric.api.local('echo "StrictHostKeyChecking yes" >> ~/.ssh/config')
+
+	fabric.api.local('%s echo' % ssh_master) # To make sure warnings are cleared
+	fabric.api.local('%s echo' % ssh_slave) # To make sure warnings are cleared
+	
+	fabric.api.local('%s sudo tar czvf - /data | %s sudo tar xzvf - -C /' % (ssh_master, ssh_slave))
+	fabric.api.sudo('chown -R postgres:postgres /data')
+
 def postgresql_client_install(id, name, address, stage, options, **kwargs):
 	if _postgresql_client_is_installed():
 		fabric.api.warn(fabric.colors.yellow('The PostgreSQL client is already installed.'))
