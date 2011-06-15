@@ -9,7 +9,6 @@ import time
 import os
 
 
-
 def _postgresql_is_installed():
 	with fabric.api.settings(fabric.api.hide('stderr'), warn_only=True):
 		return '9.0' in fabric.api.run('postgres --version')

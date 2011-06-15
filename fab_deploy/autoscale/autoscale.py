@@ -13,7 +13,7 @@ from fab_deploy.machine import ec2_authorize_port, create_instance, update_insta
 from fab_deploy.package import package_install
 from fab_deploy.server.web import web_server_restart
 from fab_deploy.system import set_hostname, prepare_server
-from fab_deploy.utils import setup_hosts
+from fab_deploy.utils import setup_hosts, append
 from fabric import colors
 from fabric.api import run, sudo, env, put, warn, abort, local as fab_local
 from fabric.contrib import console
@@ -165,6 +165,8 @@ def go_setup(stage = None):
             sudo('chmod 755 /etc/rc.local')
         except ValueError:
             warn(colors.yellow('No rc.local file found for server type %s' % options['server_type']))
+            
+        append('StrictHostKeyChecking yes', '~/.ssh/config')
 
     if options.get('post_setup'):
         import_string(options['post_setup'])()
@@ -182,6 +184,7 @@ def go_deploy_tag(tagname, stage = None, force = False, use_existing = False, fu
         
     if full:
         make_active(tagname)
+        run('chmod 600 %s' % os.path.join('/srv/active', fab_config['key_location_relative']))
         if options.get('post_activate'):
             import_string(options['post_activate'])()
         if 'uwsgi' in options['services'] or 'apache' in options['services']:

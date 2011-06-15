@@ -155,7 +155,9 @@ class FabDeployConfig(object):
         # Add key name
         if 'key_location' in settings:
             env.key_filename = [settings['key_location']]
-
+            if 'local_project_root' in settings:
+                self._config['key_location_relative'] = os.path.relpath(settings['key_location'], settings['local_project_root'])
+            
         # Maintain backwards-compat with env.conf
         env.conf = getattr(env, 'conf', {})
         for deploy_setting, env_conf_setting in self.env_conf_settings_map:

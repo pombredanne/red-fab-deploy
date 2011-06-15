@@ -28,8 +28,8 @@ def _db_servers_for_cluster(cluster = None, master_ip = None):
         raise NotImplementedError('Cound not find db autoscale cluster')
 
     instances = find_instances(clusters=[cluster])
-    master = [i for i in instances if i.ip_address == master_ip][0]
-    slaves = [i for i in instances if i.ip_address != master_ip]
+    master = [i for i in instances if i.dns_name == master_ip][0]
+    slaves = [i for i in instances if i.dns_name != master_ip]
     
     return master, slaves
 
@@ -38,18 +38,15 @@ def update_db_servers(cluster = None, master_ip = None):
     pgpool_set_hosts(*_db_servers_for_cluster(cluster, master_ip))
     sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
-def sync_data(cluster = None):
+def sync_data(cluster = None, master_ip = None):
     ''' Sync postgres data from master to self (slave)'''
     
-    master, slaves = _db_servers_for_cluster(cluster)
+    master, slaves = _db_servers_for_cluster(cluster, master_ip)
     
-    local('sudo service postgresql stop')
-    
-    local('chmod 600 %s' % env.key_filename[0]) #TODO: move this
-    local('echo "StrictHostKeyChecking yes" >> ~/.ssh/config')
-    
+    sudo('service postgresql stop')
+        
     copy_master_data(master.public_dns_name, 'localhost')
-    local('sudo service postgresql start')
+    run('sudo service postgresql start')
 
 def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ''' On db failover, promotes slave to master if necessary.  Deems old host unhealthy.
