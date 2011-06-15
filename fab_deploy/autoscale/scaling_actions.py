@@ -41,7 +41,7 @@ def update_db_servers(cluster = None, master_ip = None):
 def sync_data(cluster = None):
     ''' Sync postgres data from master to self (slave)'''
     
-    master, _ = _db_servers_for_cluster(cluster)[0]
+    master, slaves = _db_servers_for_cluster(cluster)
     
     local('''scp -ri %s ubuntu@%s:/data/* /data/''' % (env.key_filename[0], master.public_dns_name))
     local('chown -R postgres:postgres /data')
