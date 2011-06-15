@@ -14,10 +14,11 @@ def s3fs_install(id, name, address, stage, options, **kwargs):
     ''' Install s3fs '''
     
     with settings(warn_only = True):
-        if sudo('s3fs --version'):
+        if sudo('which s3fs'):
             warn(colors.yellow('s3fs is already installed.'))
             return
-    
+
+    #TODO: always thinks s3fs is installed
     package_install(['automake', 'build-essential', 'libcurl4-openssl-dev', 'libxml2-dev'])
     compile_and_install('http://downloads.sourceforge.net/project/fuse/fuse-2.X/2.8.5/fuse-2.8.5.tar.gz?use_mirror=autoselect')
     compile_and_install('http://s3fs.googlecode.com/files/s3fs-1.40.tar.gz')
@@ -32,6 +33,6 @@ def s3fs_setup(id, name, address, stage, options, **kwargs):
     append('/etc/fstab', 's3fs#%s  %s  fuse    allow_other,nobootwait     0       0' % (options['bucket'], options['mountpoint']), True)
     sleep(1)
     with settings(warn_only=True): #HACK
-         sudo('mkdir -p %s' % options['mountpoint'])
-         sudo('umount %s' % options['mountpoint'])
+        sudo('mkdir -p %s' % options['mountpoint'])
+        sudo('umount %s' % options['mountpoint'])
     sudo('mount %s' % options['mountpoint'])

@@ -121,6 +121,7 @@ def deploy_full(tagname, force=False, username="ubuntu", use_existing=False):
 	"""
 	deploy_project(tagname,force=force,username=username,use_existing=use_existing)
 	make_active(tagname)
+	web_server_restart()
 
 def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, with_full_virtualenv=True):
 	""" Deploys project on prepared server. """

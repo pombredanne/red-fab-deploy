@@ -273,6 +273,9 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
         ec2_clusters = dict((str(group.name), group) for group in conn.get_all_groups())
         
         for cluster, config in fab_config['clusters'].iteritems():
+            if cluster not in ec2_clusters:
+                # Must not be started
+                continue
             group = ec2_clusters[cluster]
             for instance_object in group.instances:
                 instance = ec2_instance(instance_object.instance_id)

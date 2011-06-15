@@ -1,22 +1,22 @@
 from datetime import datetime
-import time, os
-
-import fabric.api, fabric.contrib.files
-
-from fab_deploy.package import package_install, package_add_repository, compile_and_install
-from fab_deploy.machine import get_provider_dict,get_connection
+from fab_deploy.machine import get_provider_dict, get_connection
+from fab_deploy.package import package_install, package_add_repository, compile_and_install, package_update
 from fab_deploy.system import service
 from fab_deploy.utils import append
+import fabric.api
+import fabric.contrib.files
+import time
+import os
+
+
 
 def _postgresql_is_installed():
 	with fabric.api.settings(fabric.api.hide('stderr'), warn_only=True):
-		output = fabric.api.run('postgres --version')
-	return output.succeeded
+		return '9.0' in fabric.api.run('postgres --version')
 
 def _postgresql_client_is_installed():
 	with fabric.api.settings(fabric.api.hide('stderr'), warn_only=True):
-		output = fabric.api.run('psql --version')
-	return output.succeeded
+		return '9.0' in fabric.api.run('psql --version')
 
 def _pgpool_is_installed():
 	with fabric.api.settings(fabric.api.hide('stderr'), warn_only=True):
@@ -37,7 +37,8 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 		master = master_conf['public_ip'][0]
 	
 	package_add_repository('ppa:pitti/postgresql')
-	package_install(['postgresql', 'python-psycopg2'])
+	package_update()
+	package_install(['postgresql-9.0'])
 	
 	# Figure out cluster name
 	output = fabric.api.run('pg_lsclusters -h')
@@ -134,9 +135,8 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 		
 		copy_master_data(master, address)
 		#XXX: create user nobody? don't need to create users on both i suppose
+
 	if options.get('support_pgpool'):
-		if 'nobody' not in fabric.api.sudo('''su postgres -c "psql -c '\du'"'''):
-			fabric.api.sudo('su postgres -c "createuser -DIRS -U postgres -P nobody"' % (options['user']))
 		append(pg_dir + 'pg_hba.conf', ['host postgres nobody 0.0.0.0/0 trust', #TODO: see if pgpool can send a password with health check somehow
 										'hostssl all all 0.0.0.0/0 password'], True)
 	else:
@@ -160,7 +160,7 @@ def postgresql_client_install(id, name, address, stage, options, **kwargs):
 		return
 	
 	package_add_repository('ppa:pitti/postgresql')
-	package_install(['postgresql-client', 'python-psycopg2'])
+	package_install(['postgresql-client-9.0', 'python-psycopg2'])
 	
 def postgresql_setup(id, name, address, stage, options, **kwargs):
 	if 'slave' not in options:
@@ -169,6 +169,8 @@ def postgresql_setup(id, name, address, stage, options, **kwargs):
 				fabric.api.sudo('su postgres -c "createuser -s -U postgres -P %s"' % (options['user']))
 			if options['name'] not in fabric.api.sudo('''su postgres -c "psql -c '\l'"'''):
 				fabric.api.sudo('su postgres -c "createdb -U %s %s"' % (options['user'], options['name']))
+			if options.get('support_pgpool') and 'nobody' not in fabric.api.sudo('''su postgres -c "psql -c '\du'"'''):
+				fabric.api.sudo('su postgres -c "createuser -DIRS -U postgres -P nobody"')
 
 def pgpool_install(id, name, address, stage, options, **kwargs):
 	if _pgpool_is_installed():

@@ -11,16 +11,9 @@ def get_data():
     else:
         cmd = local_run
     
-    try:
-        return loads(cmd('cat /etc/red_fab_deploy_data'))
-    except:
-        return {
-            'stage': cmd('cat /etc/red_fab_deploy_stage'),
-            'server_type': cmd('cat /etc/red_fab_deploy_server_type'),
-            'cluster': cmd('cat /etc/red_fab_deploy_cluster'),
-            'instance_type': cmd('cat /etc/red_fab_deploy_instance_type')}
+    return loads(cmd('cat /etc/red_fab_deploy_data').replace("'", '"'))
 
 def set_data(data):
     ''' Save stage, server type, and cluster name, and instance_type to server.  Takes dict of those. '''
-    sudo('echo "%s" > /etc/red_fab_deploy_data' % dumps(data).replace('"', '\"'))
+    sudo('echo "%s" > /etc/red_fab_deploy_data' % dumps(data).replace(r'"', r"'"))
     sudo('echo "%s" > /etc/red_fab_deploy_cluster' % data['cluster'])

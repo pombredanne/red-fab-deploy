@@ -36,7 +36,6 @@ def settings(settings_module):
             env.fab_deploy_settings = import_string(attempt)
             fab_config.load()
             fab_data.load()
-            setup_hosts()
             return
         
         except ImportError, AttributeError:

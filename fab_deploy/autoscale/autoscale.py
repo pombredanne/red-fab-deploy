@@ -41,12 +41,11 @@ def go_start(stage = None, key_name = None):
     needsips = []
     
     if 'machines' not in fab_data: fab_data['machines'] = {}
-    if env.stage not in fab_data['machines']: fab_data['machines'][stage] = {}
+    if env.stage not in fab_data['machines']: fab_data['machines'][env.stage] = {}
     
     # Create and start instances
     for cluster, settings in fab_config['clusters'].iteritems():
         data = fab_data.cluster(cluster)
-
         if settings.get('autoscale'):
             
             machines_to_start = [['template', 'template', False]]
@@ -59,7 +58,8 @@ def go_start(stage = None, key_name = None):
         else:
             machines_to_start = [cluster, None, False]
                 
-        if not console.confirm('Do you wish to stage 3 servers, named: %s' % ', '.join(machines_to_start),
+        if not console.confirm('Do you wish to stage %i servers for cluster "%s", named: %s' 
+                               % (len(machines_to_start), cluster, ', '.join(m[0] for m in machines_to_start)),
                                default=False):
             abort(colors.red('Aborting instance deployment.'))
 
@@ -91,7 +91,7 @@ def go_start(stage = None, key_name = None):
         print colors.green('Static IP Created')
     
     update_instances()
-    setup_hosts(autoscale=True)
+    setup_hosts()
 
 def go_setup_autoscale_masters(stage = None):
     ''' Setup and install software on autoscale master (first) '''
@@ -121,11 +121,13 @@ def go_setup(stage = None):
     name = instance.tags[u'Name']
     stage, cluster, instance_type = name.split('-')
     options = fab_config.cluster(cluster)
+    cluster_data = fab_data.cluster(cluster)
+    print cluster_data
     data = {'stage': stage,
             'server_type': options.get('server_type'),
             'cluster': cluster,
             'instance_type': instance_type,
-            'master_ip': options.get('static_ip', fab_config.cluster(options['with_db_cluster'])['static_ip'])}
+            'master_ip': cluster_data.get('static-ip') or fab_data.cluster(options['with_db_cluster'])['static-ip']}
     
     set_hostname(name)
     set_data(data)
@@ -145,11 +147,11 @@ def go_setup(stage = None):
         replication = any(slave)
     
     prepare_server()
-    install_services(my_id, name, instance.private_dns, stage, options, replication = True, master = master)
+    install_services(my_id, name, instance.public_dns_name, stage, options, replication = True, master = master)
 
     if 'pgpool' in options['services']: #TODO: move this
         dbinstances = fab_data.cluster(options['with_db_cluster'])['instances']
-        pgpool_set_hosts([ec2_instance(dbinstances['master']).public_dns_name, ec2_instance(dbinstances['template']).public_dns_name])
+        pgpool_set_hosts(ec2_instance(dbinstances['master']), [ec2_instance(dbinstances['template'])])
 
     if options.get('autoscale'):
         package_install('fabric')
@@ -177,9 +179,13 @@ def go_deploy_tag(tagname, stage = None, force = False, use_existing = False, fu
 
     if options.get('autoscale') or 'uwsgi' in options['services'] or 'apache' in options['services']:
         deploy_project(tagname, force = force, use_existing = use_existing, with_full_virtualenv = data.get('server_type') != SERVER_TYPE_DB)
-
-    if options.get('server_type') == SERVER_TYPE_WEB:
-        web_server_restart()
+        
+    if full:
+        make_active(tagname)
+        if options.get('post_activate'):
+            import_string(options['post_activate'])()
+        if 'uwsgi' in options['services'] or 'apache' in options['services']:
+            web_server_restart()
 
 def go_save_templates(stage = None):
     ''' Images templates to s3, registers them '''
@@ -421,7 +427,8 @@ def go_stop_autoscale(stage = None, clusters = None):
     if env.stage and not clusters:
         clusters = fab_config['clusters'].keys()
     
-    conn = AutoScaleConnection(**aws_connection_opts())
+    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
+                               region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
 
     for cluster in clusters:
         print colors.blue('Stopping group %s' % cluster)
