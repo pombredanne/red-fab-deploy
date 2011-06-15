@@ -216,7 +216,8 @@ def go_launch_autoscale(stage = None, force = False, use_existing = False):
     values = fab_config.cluster(cluster)
     data = fab_data.cluster(cluster)
 
-    conn = AutoScaleConnection(**aws_connection_opts())
+    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
+                           region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
 
     print colors.blue('Processing group %s' % cluster)
     as_existing = conn.get_all_groups(names = [cluster])

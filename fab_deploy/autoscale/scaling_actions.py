@@ -28,9 +28,9 @@ def _db_servers_for_cluster(cluster = None, master_ip = None):
         raise NotImplementedError('Cound not find db autoscale cluster')
 
     instances = find_instances(clusters=[cluster])
-    master = [i for i in instances if i.dns_name == master_ip][0]
-    slaves = [i for i in instances if i.dns_name != master_ip]
-    
+    master = [i for i in instances if i.ip_address == master_ip][0]
+    slaves = [i for i in instances if i.ip_address != master_ip]
+
     return master, slaves
 
 def update_db_servers(cluster = None, master_ip = None):

@@ -27,6 +27,7 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 
 	if _postgresql_is_installed():
 		fabric.api.warn(fabric.colors.yellow('PostgreSQL is already installed.'))
+		fabric.api.sudo('service postgresql restart')
 		return
 	
 	config = get_provider_dict()
@@ -174,6 +175,7 @@ def postgresql_setup(id, name, address, stage, options, **kwargs):
 def pgpool_install(id, name, address, stage, options, **kwargs):
 	if _pgpool_is_installed():
 		fabric.api.warn(fabric.colors.yellow('pgpool is already installed.'))
+		fabric.api.sudo('service pgpool restart')
 		return
 	
 	with fabric.api.settings(warn_only = True):

@@ -6,7 +6,8 @@ managing django projects on Debian/Ubuntu servers. License is MIT.
 This project is specifically targeted at deploying websites built using
 the `pypeton <https://github.com/ff0000/pypeton>` project creation tool.
 Basically this means you must follow the same folder and file layout as
-found in that tool.
+found in that tool.  Generally, at least.
+(The most important thing is to have your manage.py and django apps in a /project subfolder).
 
 This project was inspired by `django-fab-deploy <http://packages.python.org/django-fab-deploy>`
 and `cuisine <https://github.com/ff0000/cuisine/>`.
@@ -17,62 +18,242 @@ These tools are being geared towards deploying on Amazon EC2.
 
 IMPORTANT: red-fab-deploy will only work if you install the following packages:
     
-	$ pip install -e git+git://github.com/bitprophet/fabric.git#egg=fabric
-	$ pip install boto
-	$ pip install -e git+git://github.com/ff0000/red-fab-deploy.git#egg=red-fab-deploy
+	$ pip install fabric>=1.0
+	$ pip install boto==2.0b4
+    $ pip install simplejson
+    
+To use autoscaling, you'll need to have the AutoScaling and CloudWatch apis installed on your local system.
+If you don't have a native package, they can be found at:
 
-## Important Notes
+    http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip
+    http://ec2-downloads.s3.amazonaws.com/CloudWatch-2010-08-01.zip
 
-Configuration files for apache, nginx, and uwsgi must follow a very common naming
+## Release Notes
+
+Skip this section if you've never used fab-deploy before.
+
+### File name conventions
+
+By default, configuration files for apache, nginx, and uwsgi must follow a very common naming
 convention.  These files all should be found in the /deploy/ folder in side of
 the project.  Simply put, the files must describe the stage by using the 
-convention 'filename.<stage>.[ini|conf]', where <stage> can be
-'production, 'staging', or 'development'.  You can choose the names of your stages
-for your individual project, but they must conform to the stages found in the 
-generated config file.
+convention 'filename.<stage>.[ini|conf]', or be for any stage with 'filename.[ini|conf]'.
 
-For example, the nginx.conf file for production will be named 'nginx.production.conf',
-whereas the nginx.conf file for development will be named 'nginx.development.conf'.
-If these two files are the same then it's recommended that you write one file named
-'nginx.conf' and check in symlinks 'nginx.<stage>.conf' into the same folder.
+HOWEVER, you can specify an arbitrarily-named configuration file for many services using 'settings_file' in the 
+services dictionary, explained below.
 
-Following this convention will make deployment much less of a hassle and hopefully
-will prevent the need to log into the servers.
+### Autoscaling
+Currently only works for postgresql and web, although anything that doesn't need inter-server communication should be fine.
+Autoscaling only works on EC2.
 
-## Advanced Deployment and Setup
+### Backwards Compatibility
+Every effort has been made to ensure backwards compatibility... but I'm sure something will be broken.  Sorry.
+
+### Configuration File Changes
+Configuration settings are now primarily stored in a python dictionary, instead of env.conf and a json file, although
+those should continue to work for the near future.  Deprication warnings will be given.  See below for details.
+
+## Configuration
 
 ### Fabfile
 
-The first thing you need to do is set up your fabfile.  This project includes an example
-that is necessary to get started called fabfile_example.py.  You can take a look at it and 
-replace the default values with your actual values.
+If you've used fabric before, you know about fabfiles.  This is where fabric finds the commands
+it will run.  You should have this at the root of your project, and called 'fabfile.py',
+for it to be automatically found;
+otherwise you will have to specify it with -F when running fab.
 
-Importantly there are important settings for Amazon EC2 instances:
+The only thing your fabfile needs to have is:
 
-	PROVIDER = 'amazon'
-	AWS_ACCESS_KEY_ID     = 'yourawsaccesskeyid',
-	AWS_SECRET_ACCESS_KEY = 'yourawssecretaccesskey',
+    from fabric.api import *
+    from fab_deploy import *
+    env.settings_prefix = 'project.config.'
 
-As an example here is the env.conf dictionary for amazon that you'd find in your file:
+The env.settings_prefix is optional, put wherever your settings files will live, relative to your fabfile.
+This will prevent you from having to specify the full path every time.
+You can also put any commands in here that are specific to your project.  More on that below.
 
-	env.conf = dict(
-		# THIS IS YOUR PROVIDER AND ACCESS
-		PROVIDER = 'ec2_us_east',
-		AWS_ACCESS_KEY_ID     = '',     
-		AWS_SECRET_ACCESS_KEY = '',     
-		
-		# THESE THREE ARE NECESSARY
-		CONF_FILE = os.path.join(os.getcwd(),'fabric.conf'),
-		INSTANCE_NAME = 'projectname', 
-		REPO = 'http://some.repo.com/projectname/',
-	)
+### Settings
+
+As with earlier versions of red-fab-deploy, you can specify settings via env.conf settings
+in the fabfile (see fabfile-example.py for, um, an example),
+and via a fabric.conf json file.  However the new, recommended way is by using a per-stage python dictionary.
+This allows for greater flexibility and organization.
+
+What does this mean?  It means you have a python module, it could be your django settings file, with a dictonary in it. 
+One dictionary per stage.  By default this dictionary is called DEPLOY.  For example, to specify a settings file called 'production'
+in your env.settings_prefix, with a settings dictionary called DEPLOY, you would call:
+
+    fab settings:production command_to_run
+
+To specify a different settings file, with a settings dictionary called, say, 'fab_deploy_settings', you could call:
+
+    fab settings:some.path.to.another.settings.file.fab_deploy_settings
+    
+Fab-deploy is smart enough to figure out what you're trying to do.
+
+#### Settings Dictionary Options
+
+The settings dictionary can contain the following options.  Those with defaults are optional.  
+(AS only) means that the option is only required/used by autoscaling.  Always use absolute paths.
+
+* project_name - name of the project, used in directory structures and log messages
+* repo - The VCS repo the project lives at
+* vcs (default: svn) - The VCS system to use.  Currently only svn and git are supported.
+* vcs_tags (default: /tags) - Where in the repo to find tagged versions for deployment.
+
+* local_project_root (AS only) - Where your project lives.  Used to figure out relative paths for deployment.
+
+* stage - the stage this dictionary represents (could be 'production')
+* data_file - where to store data about created AWS instances for later lookup.  Will be in json format.
+
+* key_name - AWS name of key to use for creating new instances
+* key_location - Where the key lives on your hard drive, for logging in to new instances.  Will be passed to fab.
+
+* region - AWS region, like 'us-west-1'
+* availability_zone - AWS availability zone, like 'us-west-1c'
+
+* aws_access_key_id - Your AWS Public Key
+* aws_secret_access_key - Your AWS Private Key
+* aws_x509_certificate (AS only) - Path to your AWS Public Certificate File 
+* aws_x509_private_key (AS only) - Path to your AWS Private Certificate File
+* aws_id (AS only) - Your aws user id, should look like 1234-5678-9123 (at the very bottom of the webpage that has your keys and certs)
+
+* ami_bucket (AS only) - S3 bucket to store files related to saved AMIs.  Doesn't have to already exist.
+
+* clusters - a dictionary specifying what sorts of machines to deploy.  Explained below.
+
+#### Clusters Options
+The clusters sub-dictionary is like the old fabric.conf file.  It explains to fab-deploy what servers you want to start up,
+what services they should have, etc.  The difference here is that you're organizing your machines by type (web server, db server, etc).
+Remember the whole settings dictionary is for a given stage, so all of these clusters
+will be as well.
+
+Each cluster is a name:options pair, where 'name' is the name of the cluster, and 'options' is the cluster options.  So:
+
+    'clusters': {
+        'database_cluster': {'option1': 'value1', ... },
+        'web_cluster': {'optionA': 'valueA', ... }
+     }
+     
+Cluster options are:
+
+* autoscale (default: False) - Should this cluster autoscale?
+* server_type (somewhat optional but untested) - either fab_deploy.constants.SERVER_TYPE_DB or fab_deploy.constants.SERVER_TYPE_WEB
+* size - EC2 machine size to use, like 'm1.small'
+* initial_image ('image' is also acceptable) - AMI to use when creating instance
+* services - a dictionary of name:options pairs for services to install and setup on the instance, enumerated below.  
+* post_setup (optional) - a string specifying a function to run after setup is complete, for example 'fabfile.web_post_setup'
+would run a function called web_post_setup() in fabfile.py.  This is where you would install extra packages, for example.
+* post_activate (optional) - a string specifying a function to run after make_active is complete.  This is where you would recreate
+your search index, for example.
+* with_db_cluster (AS only, fab_deploy.constants.SERVER_TYPE_WEB clusters only) - Linked db cluster name
+* with_web_cluster (AS only, fab_deploy.constants.SERVER_TYPE_DB clusters only) - Linked web cluster name
+
+If autoscale is True, the following options are also available:
+* cpu_range - a 2-element tuple/list of the minimum and maximum allowed CPU range before autoscaling grows or shrinks the cluster.
+* count_range - a 2-element tuple/list of the minimum and maximum allowed number of instances in the autoscaling cluster.
+* load_balancer (optional - a dictonary of options
+to create a load balancer (if not given no load balancer will be created for the autoscaling cluster):
+	* name - the name of the load balancer
+	* cookie_name (optional) - the external cookie to hook on, repeated visits with the same cookie value will always go to the same instanace.
+In Django it is 'sessionid'.
+	* listeners - a list of dictionaries that the load balancer should listen on, like [{'port': 80, 'protocol': 'HTTP'}].  Both port and protocol are required.
+	* target - the EC2 load balancer's health check protocol and port, like 'HTTP:80/'.
+
+If autoscale is False, the following options are available:
+* count (default: 1) - number of instances to start in this cluster
+
+#### Available Services
+
+The following services are available.  Specify them like 'name': {options} in the services dictionary above.
+
+TODO: this is only a partial list of services AND options
+
+* postgresql
+	* name - Database name
+	* user
+	* password
+	* ebs_size (default: disabled)
+	* support_pgpool (default: False)
+* nginx
+	* settings_file (default as specified in release notes above) - RELATIVE PATH of the settings file to use
+* uwsgi
+	* settings_file (default as specified in release notes above) - RELATIVE PATH of the settings file to use
+* pgpool
+	* password - password to use for pgpool to connect for health check.  TODO: More info on this later
+* postgresql-client (no options available)
+* s3fs
+	* bucket - bucket to mount
+	* mountpoint - where to mount it
+
+An example file will be available soon.
+
+## Deployment - New Method
+
+We'll assume for this tutorial that you're interested in deploying your production stage, and that your settings are 
+in the 'production' module as described above.  Substitute in appropriate values for your circumstances.
+
+For now, you have to run setup_hosts after providing configuration and settings, to set the fabric hosts.  There's
+not really a good way around this.
+
+1. Log on to AWS, create a key, and download it.  Put the relevant information in your settings file.
+
+2. To start instances, run:
+
+    $ fab settings:production setup_hosts go_start
+
+3a. If using autoscale, you'll have to setup (load software on) the master instance first.  The easiest way to do this is:
+
+    $ fab settings:production setup_hosts go_setup_autoscale_masters go_setup_autoscale_templates
+    
+3b.  Otherwise you can just do:
+   
+    $ fab settings:production setup_hosts go_setup
+    
+4. To deploy your software on the hosts, and set it as active, run:
+
+    $ fab settings:production setup_hosts go_deploy_tag:my_tag_name
+    
+    This command also takes the arguments 'force', 'use_existing', and 'full'.
+    
+If you're not autoscaling, you're done!  Otherwise...
+
+5.  To save your templates and prepare to launch autoscale groups, run
+
+    $ fab settings:production setup_hosts go_save_templates
+    
+6.  To use these templates to launch autoscale groups, run
+
+    $ fab settings:production setup_hosts go_launch_autoscale
+
+    This command also takes the arguments 'force' and 'use_existing'.
+    Note that this command will not remove an existing load balancer under any circumstances, to avoid breaking a live site.
+    
+### A few other commands
+
+* 'go_stop_autoscale' will stop your autoscaling clusters.  You can specify only certain clusters with the argument 'clusters'.
+Note that this does not stop the masters or templates, or delete static IPs or load balancers, you'll have to do that through the web
+interface for now.
+
+* 'clusters', 'stage', 'server_types', 'instance_types' - all can be run before setup_hosts (or as options TO setup_hosts).
+These allow filtering of the instances so you can run specific commands.
+Server Types are 'web', 'db', and None, or whatever you specify manually in your cluster configuration.  Instance Types 
+are 'master', 'template', 'autoscale', and None.
+
+* 'setup_hosts' will find all instances, including those started with autoscale.
+
+## Older Method
+
+I'm not sure how relevant these are, as we're really focusing on EC2 now.  But mostly this should still work.
+
+TODO: clean this up.
 
 ### Development
 
 There now exists a set of advanced tools for streamlining the setup of 
 cloud servers and project deployment.  Follow these steps:
 
-1. Ensure you have correctly set up your fabfile using the instructions above.
+1. Ensure you have correctly set up your settings using the instructions above.
 
 2. To begin with the set up of your cloud account you must run the following commands. On
 AWS this will create a default key file and authorize tcp ports 22 and 80 for use. 
@@ -165,7 +346,7 @@ Then launch:
 
 	fab dev web_server_setup web_server_start -i deploy/[your private SSH key here]
 
-**If this is not the first time** then just run::
+	*If this is not the first time	* then just run::
 
 	fab -i deploy/[your private SSH key here] dev uwsgi_restart
 	fab -i deploy/[your private SSH key here] dev web_server_restart
@@ -206,3 +387,7 @@ To install and setup mysql you'll need to run the following commands::
 
 The PostgreSQL commands are not yet set up
 
+
+## Autoscale Methodology
+
+#TODO

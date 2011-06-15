@@ -64,8 +64,8 @@ def save_as_ami(name, deregister = None):
     put(fab_config['aws_x509_certificate'], '/tmp/cert.pem')
     put(fab_config['aws_x509_private_key'], '/tmp/pk.pem')
     
-    if fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True):
-        package_update()
+    fabric.contrib.files.sed('/etc/apt/sources.list', 'universe$', 'universe multiverse', use_sudo=True)
+    package_update()
     package_install('ec2-ami-tools', 'ec2-api-tools')
     
     if deregister:
