@@ -43,12 +43,13 @@ def sync_data(cluster = None):
     
     master, slaves = _db_servers_for_cluster(cluster)
     
-    local('sudo postgresql stop')
+    local('sudo service postgresql stop')
     
     local('chmod 600 %s' % env.key_filename[0]) #TODO: move this
     local('echo "StrictHostKeyChecking yes" >> ~/.ssh/config')
-
-    copy_master_data(master, 'localhost')
+    
+    copy_master_data(master.public_dns_name, 'localhost')
+    local('sudo service postgresql start')
 
 def dbserver_failover(old_node_id, old_host_name, old_master_id):
     ''' On db failover, promotes slave to master if necessary.  Deems old host unhealthy.
@@ -66,7 +67,7 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
 
         # Give master ip address
         ec2.associate_address(my_id, data['master_ip'])
-        sudo('service pgpool reload')
+        sudo('service postgresql reload')
         #local('pcp_attach_node 10 127.0.0.1 9898 pgpool %s 0' % settings['services']['postgresql']['password'])
 
     else:
