@@ -107,6 +107,8 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 
 	fabric.contrib.files.sed(pg_dir + 'pg_hba.conf', "ident", "trust", use_sudo=True)
 	
+	append(pg_dir + 'pg_hba.conf', "host replication all 0.0.0.0/0 md5", True)
+	
 	# Figure out if we're a master
 	if replication and 'slave' not in options:
 		# We're a master!
@@ -116,8 +118,6 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 			'max_wal_senders = 1',
 			'checkpoint_segments = 8',
 			'wal_keep_segments = 8'], True)
-		
-		append(pg_dir + 'pg_hba.conf', "host replication all 0.0.0.0/0 md5", True)
 		
 	elif 'slave' in options:
 		# We're a slave!

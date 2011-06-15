@@ -44,7 +44,10 @@ services dictionary, explained below.
 
 ### Autoscaling
 Currently only works for postgresql and web, although anything that doesn't need inter-server communication should be fine.
-Autoscaling only works on EC2.
+Autoscaling only works on EC2.  
+
+IMPORTANT: Right now for postgres autoscaling to work, your clusters need to be named 'database' and 'web', with the correct
+server_types (see below).
 
 ### Backwards Compatibility
 Every effort has been made to ensure backwards compatibility... but I'm sure something will be broken.  Sorry.

@@ -14,6 +14,7 @@ from fab_deploy.package import package_install
 from fab_deploy.server.web import web_server_restart
 from fab_deploy.system import set_hostname, prepare_server
 from fab_deploy.utils import setup_hosts, append
+from fab_deploy.virtualenv import virtualenv
 from fabric import colors
 from fabric.api import run, sudo, env, put, warn, abort, local as fab_local
 from fabric.contrib import console
@@ -155,8 +156,11 @@ def go_setup(stage = None):
 
     if options.get('autoscale'):
         package_install('fabric')
+        with virtualenv():
+            run('pip install -e git+git://github.com/daveisaacson/red-fab-deploy.git#egg=fab_deploy')
+        
         #grab_from_web('http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip')
-        #grab_from_web('http://ec2-downloads.s3.amazonaws.com/CloudWatch-2010-08-01.zip')
+        #grab_from_web('http://ec2-downloads.s3.amazonaws.com/AutoScaling-2010-08-01.zip')')
         #append('/home/ubuntu/.bashrc', 'export PATH=$PATH:/home/ubuntu/AutoScaling-2010-08-01/bin/:/home/ubuntu/CloudWatch-2010-08-01/bin/')
 
         try:
@@ -166,7 +170,7 @@ def go_setup(stage = None):
         except ValueError:
             warn(colors.yellow('No rc.local file found for server type %s' % options['server_type']))
             
-        append('StrictHostKeyChecking yes', '~/.ssh/config')
+        append('~/.ssh/config', 'StrictHostKeyChecking yes')
 
     if options.get('post_setup'):
         import_string(options['post_setup'])()

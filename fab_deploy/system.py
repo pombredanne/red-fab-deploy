@@ -9,9 +9,9 @@ from fab_deploy.utils import detect_os, append
 
 def service(service, command):
 	""" Give a command to a service """
-	if service not in ['apache', 'nginx', 'uwsgi','mysql']:
-		fabric.api.warn(fabric.api.colors('Service is not allowed: %s' % service))
-		return
+	#if service not in ['apache', 'nginx', 'uwsgi','mysql']:
+	#	fabric.api.warn(fabric.api.colors('Service is not allowed: %s' % service))
+	#	return
 	fabric.api.sudo('service %s %s' % (service, command))
 
 def get_public_ip():
