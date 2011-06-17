@@ -24,7 +24,7 @@ test -x $DAEMON || exit 0
 
 set -e
 
-DAEMON_OPTS="-c -f /etc/pgpool.conf"
+DAEMON_OPTS="-c -D -f /etc/pgpool.conf"
 
 case "$1" in
   start)

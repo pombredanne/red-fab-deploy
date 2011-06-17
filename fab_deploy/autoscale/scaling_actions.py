@@ -8,6 +8,7 @@ from fab_deploy.utils import find_instances
 from fabric.operations import local, run, sudo
 from fabric.state import env
 import re
+from boto.exception import BotoServerError
 #from fab_deploy.autoscale.hosts import find_servers
 
 
@@ -35,7 +36,8 @@ def _db_servers_for_cluster(cluster = None, master_ip = None):
 
 def update_db_servers(cluster = None, master_ip = None):
     ''' Find *running* db servers associated with current host, or cluster if provided.  Set to pgpool hosts.'''
-    pgpool_set_hosts(*_db_servers_for_cluster(cluster, master_ip))
+    master, slaves = _db_servers_for_cluster(cluster, master_ip)
+    pgpool_set_hosts(fab_config.get(cluster)['services']['pgpool']['password'], master, slaves)
     sudo('service pgpool restart') #TODO: reload isn't working for some reason
 
 def sync_data(cluster = None, master_ip = None):
@@ -72,8 +74,11 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
         pass
 
     # Kill the old server
-    conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
-                               region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
-
-    instance = ec2_instance_with(lambda i: i.public_dns_name == old_host_name)
-    conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)
+    try:
+        conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
+                                   region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
+    
+        instance = ec2_instance_with(lambda i: i.public_dns_name == old_host_name)
+        conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)
+    except BotoServerError:
+        pass

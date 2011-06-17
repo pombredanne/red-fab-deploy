@@ -3,10 +3,14 @@ from fab_deploy.machine import get_provider_dict, get_connection
 from fab_deploy.package import package_install, package_add_repository, compile_and_install, package_update
 from fab_deploy.system import service
 from fab_deploy.utils import append
+from fabric.contrib.files import comment
+from fabric.operations import sudo, run
+from fabric.utils import abort
 import fabric.api
 import fabric.contrib.files
-import time
 import os
+import re
+import time
 
 
 def _postgresql_is_installed():
@@ -25,10 +29,10 @@ def _pgpool_is_installed():
 def postgresql_install(id, name, address, stage, options, replication=False, master = None):
 	""" Installs postgreSQL """
 
-	if _postgresql_is_installed():
-		fabric.api.warn(fabric.colors.yellow('PostgreSQL is already installed.'))
-		fabric.api.sudo('service postgresql restart')
-		return
+#	if _postgresql_is_installed():
+#		fabric.api.warn(fabric.colors.yellow('PostgreSQL is already installed.'))
+#		fabric.api.sudo('service postgresql restart')
+#		return
 	
 	config = get_provider_dict()
 	if master is None and 'slave' in options and 'name' not in options: # name in options means autoscale, I guess?
@@ -113,17 +117,31 @@ def postgresql_install(id, name, address, stage, options, replication=False, mas
 	if replication and 'slave' not in options:
 		# We're a master!
 		
+		###: remove slave stuff
+		comment(pg_dir + 'postgresql.conf', re.escape('host_standby = on'), use_sudo=True)
+		sudo('rm -rf /data/recovery.conf')
+		
 		append(pg_dir + 'postgresql.conf', [
 			'wal_level = hot_standby',
-			'max_wal_senders = 1',
+			'max_wal_senders = 999',
 			'checkpoint_segments = 8',
 			'wal_keep_segments = 8'], True)
 		
 	elif 'slave' in options:
 		# We're a slave!
 		
+		if not master:
+			abort(fabric.colors.red('You need to provide a master address'))
+		
+		fabric.api.sudo('rm -rf /data/failover')
+		
+		### Remove master stuff
+		comment(pg_dir + 'postgresql.conf', re.escape('wal_level = hot_standby'), use_sudo=True)
+		comment(pg_dir + 'postgresql.conf', re.escape('max_wal_senders = 1'), use_sudo=True)
+		
 		append(pg_dir + 'postgresql.conf', [
 			'hot_standby = on',
+			#'max_wal_senders = 999',
 			'checkpoint_segments = 8',
 			'wal_keep_segments = 8'], True)
 		
@@ -201,9 +219,19 @@ def pgpool_install(id, name, address, stage, options, **kwargs):
 	#fabric.api.sudo('pgpool -c -f /etc/pgpool.conf')
 	fabric.api.sudo('service pgpool start')
 
-def pgpool_set_hosts(master, slaves):
+def pgpool_set_hosts(passwd, master, slaves):
 	fabric.contrib.files.comment('/etc/pgpool.conf', 'backend_hostname', True)	
-	for i, slave in enumerate([master] + slaves):
-		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, slave.public_dns_name),
+	for i, host in enumerate([master] + slaves):
+		address = host.public_dns_name
+		if not address:
+			if i == 0:
+				abort(fabric.colors.red('Missing master dns name'))					
+			else:
+				continue
+		append('/etc/pgpool.conf', ['backend_hostname%d = %s' % (i, address),
 									'backend_port%d = 5432' % i,
 									'backend_weight%d = 1' % i], use_sudo=True)
+		
+		sudo('service pgpool restart')
+		run('pcp_attach_node 10 localhost 9898 pgpool %s %d' % (passwd, i))#TODO: probably redundant...
+		

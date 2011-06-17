@@ -54,13 +54,13 @@ def go_start(stage = None, key_name = None):
                 machines_to_start.insert(0, ['master', 'master', True])
         
         elif settings.get('count'):
-            machines_to_start = [[i, None, False] for i in xrange(settings['count'])]
+            machines_to_start = [[str(i), '', False] for i in xrange(settings['count'])]
             
         else:
-            machines_to_start = [cluster, None, False]
+            machines_to_start = [cluster, '', False]
                 
         if not console.confirm('Do you wish to stage %i servers for cluster "%s", named: %s' 
-                               % (len(machines_to_start), cluster, ', '.join(m[0] for m in machines_to_start)),
+                               % (len(machines_to_start), cluster, ', '.join('%s-%s-%s' % (env.stage, cluster, m[0]) for m in machines_to_start)),
                                default=False):
             abort(colors.red('Aborting instance deployment.'))
 
@@ -137,6 +137,7 @@ def go_setup(stage = None):
     master = None    
     if options.get('autoscale'):
         if instance_type == 'template' and 'postgresql' in options['services']:
+            print 'SLAVE ON'
             options['services']['postgresql']['slave'] = True
             master = ec2_instance(fab_data.cluster(cluster)['instances']['master']).public_dns_name
             replication = True
@@ -152,7 +153,7 @@ def go_setup(stage = None):
 
     if 'pgpool' in options['services']: #TODO: move this
         dbinstances = fab_data.cluster(options['with_db_cluster'])['instances']
-        pgpool_set_hosts(ec2_instance(dbinstances['master']), [ec2_instance(dbinstances['template'])])
+        pgpool_set_hosts(options['services']['pgpool']['password'], ec2_instance(dbinstances['master']), [ec2_instance(dbinstances['template'])])
 
     if options.get('autoscale'):
         package_install('fabric')
@@ -170,7 +171,7 @@ def go_setup(stage = None):
         except ValueError:
             warn(colors.yellow('No rc.local file found for server type %s' % options['server_type']))
             
-        append('~/.ssh/config', 'StrictHostKeyChecking yes')
+        append('~/.ssh/config', 'StrictHostKeyChecking no')
 
     if options.get('post_setup'):
         import_string(options['post_setup'])()

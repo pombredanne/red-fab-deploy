@@ -1,7 +1,9 @@
 from boto.ec2.autoscale import AutoScaleConnection
+from compiler.ast import Return
 from fab_deploy.virtualenv import virtualenv
 from fabric.api import env
 from fabric.decorators import runs_once, hosts
+from fabric.utils import abort
 from functools import wraps
 from pprint import pformat
 import fabric.api
@@ -10,7 +12,6 @@ import fabric.contrib.files
 import os
 import re
 import simplejson
-from compiler.ast import Return
 
 
 def _codename(distname, version, id):
@@ -251,6 +252,9 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
     
 def find_instances(clusters = None, server_types = None, instance_types = None):
     
+    if env.stage is None:
+        abort('No stage provided')
+    
     print fabric.colors.green('Finding hosts...')
     if isinstance(clusters, basestring):
         clusters = [clusters]
@@ -289,6 +293,7 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
         # Get manually created instances
         for request in ec2.get_all_instances():
             for instance in request.instances:
+                print instance, instance.tags.get('Stage')
                 if instance in instances or str(instance.tags.get('Stage')) != env.stage or instance.state != 'running':
                     continue
                 instances[instance] = {'stage': str(instance.tags.get('Stage')),
@@ -299,7 +304,7 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
         env.instances = instances
         
     # Filter 
-    print clusters, server_types, instance_types
+    #print clusters, server_types, instance_types
     instances = dict((instance, attrs) for instance, attrs in env.instances.iteritems()
          if (not server_types or attrs['server_type'] in server_types)\
          and (not instance_types or attrs['instance_type'] in instance_types)\
