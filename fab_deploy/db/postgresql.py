@@ -178,7 +178,7 @@ def postgresql_client_install(id, name, address, stage, options, **kwargs):
 		return
 	
 	package_add_repository('ppa:pitti/postgresql')
-	package_install(['postgresql-client-9.0', 'python-psycopg2'])
+	package_install(['postgresql-client', 'python-psycopg2'])
 	
 def postgresql_setup(id, name, address, stage, options, **kwargs):
 	if 'slave' not in options:
@@ -233,5 +233,5 @@ def pgpool_set_hosts(passwd, master, slaves):
 									'backend_weight%d = 1' % i], use_sudo=True)
 		
 		sudo('service pgpool restart')
-		run('pcp_attach_node 10 localhost 9898 pgpool %s %d' % (passwd, i))#TODO: probably redundant...
+		#run('pcp_attach_node 10 localhost 9898 pgpool %s %d' % (passwd, i))#TODO: probably redundant...
 		

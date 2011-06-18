@@ -82,3 +82,5 @@ def dbserver_failover(old_node_id, old_host_name, old_master_id):
         conn.set_instance_health(instance.id, 'Unhealthy', should_respect_grace_period = False)
     except BotoServerError:
         pass
+    
+    #TODO: backup db, and THEN kill

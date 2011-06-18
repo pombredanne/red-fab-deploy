@@ -13,7 +13,7 @@ from fab_deploy.machine import ec2_authorize_port, create_instance, update_insta
 from fab_deploy.package import package_install
 from fab_deploy.server.web import web_server_restart
 from fab_deploy.system import set_hostname, prepare_server
-from fab_deploy.utils import setup_hosts, append
+from fab_deploy.utils import setup_hosts, append, find_instances
 from fab_deploy.virtualenv import virtualenv
 from fabric import colors
 from fabric.api import run, sudo, env, put, warn, abort, local as fab_local
@@ -135,21 +135,30 @@ def go_setup(stage = None):
     
     # Determine if a master/slave relationship exists for databases in config - #TODO not sure how to unify these approaches
     master = None    
+    replication = False
+    
     if options.get('autoscale'):
-        if instance_type == 'template' and 'postgresql' in options['services']:
-            print 'SLAVE ON'
+        if instance_type == 'master':
+            replication = True
+        elif instance_type == 'template' and 'postgresql' in options['services']:
             options['services']['postgresql']['slave'] = True
             master = ec2_instance(fab_data.cluster(cluster)['instances']['master']).public_dns_name
             replication = True
+            
+    elif 'slave' in options:
+        # Are we a slave?
+        master = find_instances(clusters = options['slave'])[0].public_dns_name
+        replication = True
 
     else:
-        slave = []
-        for db in ['mysql','postgresql','postgresql-client']:
-            slave.append(any(['slave' in values.get(db,{}) for name, values in fab_config['clusters'].iteritems()]))
-        replication = any(slave)
+        # Are we a master?
+        for name, values in fab_config['clusters'].iteritems():
+            for db in ['mysql','postgresql']:
+                if values.get(db,{}).get('slave') == str(env.host_string).split('@')[-1]:
+                    replication = True
     
     prepare_server()
-    install_services(my_id, name, instance.public_dns_name, stage, options, replication = True, master = master)
+    install_services(my_id, name, instance.public_dns_name, stage, options, replication = replication, master = master)
 
     if 'pgpool' in options['services']: #TODO: move this
         dbinstances = fab_data.cluster(options['with_db_cluster'])['instances']
@@ -183,17 +192,18 @@ def go_deploy_tag(tagname, stage = None, force = False, use_existing = False, fu
     stage = stage or env.stage
     data = get_data()
     options = fab_config.cluster(data['cluster'])
-
+    
     if options.get('autoscale') or 'uwsgi' in options['services'] or 'apache' in options['services']:
         deploy_project(tagname, force = force, use_existing = use_existing, with_full_virtualenv = data.get('server_type') != SERVER_TYPE_DB)
         
-    if full:
-        make_active(tagname)
-        run('chmod 600 %s' % os.path.join('/srv/active', fab_config['key_location_relative']))
-        if options.get('post_activate'):
-            import_string(options['post_activate'])()
-        if 'uwsgi' in options['services'] or 'apache' in options['services']:
-            web_server_restart()
+        if full:
+            make_active(tagname)
+            if fab_config.get('key_location_relative'):
+                run('chmod 600 %s' % os.path.join('/srv/active', fab_config['key_location_relative']))
+            if options.get('post_activate'):
+                import_string(options['post_activate'])()
+            if 'uwsgi' in options['services'] or 'apache' in options['services']:
+                web_server_restart()
 
 def go_save_templates(stage = None):
     ''' Images templates to s3, registers them '''

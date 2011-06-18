@@ -49,6 +49,9 @@ Autoscaling only works on EC2.
 IMPORTANT: Right now for postgres autoscaling to work, your clusters need to be named 'database' and 'web', with the correct
 server_types (see below).
 
+ALSO IMPORTANT: Postgres autoscaling may turn off the server that has your database on it.  Right now there is no backup system.
+Make sure this is what you want to do.
+
 ### Backwards Compatibility
 Every effort has been made to ensure backwards compatibility... but I'm sure something will be broken.  Sorry.
 
@@ -69,7 +72,7 @@ The only thing your fabfile needs to have is:
 
     from fabric.api import *
     from fab_deploy import *
-    env.settings_prefix = 'project.config.'
+    env.settings_prefix = 'project.settings.'
 
 The env.settings_prefix is optional, put wherever your settings files will live, relative to your fabfile.
 This will prevent you from having to specify the full path every time.
