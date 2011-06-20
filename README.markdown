@@ -1,5 +1,7 @@
 # django-fab-deploy: django deployment tool
 
+NOTE: This branch has been abandoned as of 6/20/2011, most of the functionality will be rolled into a new deployment tool under development.  For now, use builder or the master branch of red-fab-deploy.
+
 red-fab-deploy is a collection of Fabric scripts for deploying and
 managing django projects on Debian/Ubuntu servers. License is MIT.
 
@@ -20,7 +22,7 @@ IMPORTANT: red-fab-deploy will only work if you install the following packages:
     
 	$ pip install fabric>=1.0
 	$ pip install boto==2.0b4
-    $ pip install simplejson
+    	$ pip install simplejson
     
 To use autoscaling, you'll need to have the AutoScaling and CloudWatch apis installed on your local system.
 If you don't have a native package, they can be found at:
@@ -31,6 +33,9 @@ If you don't have a native package, they can be found at:
 ## Release Notes
 
 Skip this section if you've never used fab-deploy before.
+
+### Host Determination
+I had to remove fab auto-detecting the hosts from your config file as it was just creating too many problems.  So just setup your hosts with 'fab setup_hosts' first.
 
 ### File name conventions
 
@@ -198,6 +203,8 @@ An example file will be available soon.
 
 We'll assume for this tutorial that you're interested in deploying your production stage, and that your settings are 
 in the 'production' module as described above.  Substitute in appropriate values for your circumstances.
+
+If you're using a json conf file, instead of using 'settings' to define your settings file, which in turn defines your stage... just use stage:<stagename>.
 
 For now, you have to run setup_hosts after providing configuration and settings, to set the fabric hosts.  There's
 not really a good way around this.

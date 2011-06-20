@@ -27,6 +27,13 @@ import webbrowser
 def local(cmd, *args, **kwargs):
     return fab_local(re.sub('\s+', ' ', cmd), *args, **kwargs)
 
+def scit(hostname):
+    try:
+        s, c, it = hostname.split('-')
+        return s,c,it
+    except ValueError:
+        return hostname.split('-', 1) + [None]
+
 @runs_once
 def go_start(stage = None, key_name = None):
     ''' Open ports, startup instances. '''
@@ -57,26 +64,28 @@ def go_start(stage = None, key_name = None):
             machines_to_start = [[str(i), '', False] for i in xrange(settings['count'])]
             
         else:
-            machines_to_start = [cluster, '', False]
-                
+            machines_to_start = [[cluster, '', False]]
+        
         if not console.confirm('Do you wish to stage %i servers for cluster "%s", named: %s' 
-                               % (len(machines_to_start), cluster, ', '.join('%s-%s-%s' % (env.stage, cluster, m[0]) for m in machines_to_start)),
+                               % (len(machines_to_start),
+                                  cluster,
+                                  ', '.join('%s-%s%s' % (env.stage, cluster, '-' + m[0] if m[0] != cluster else '') for m in machines_to_start)),
                                default=False):
             abort(colors.red('Aborting instance deployment.'))
 
         for name, instance_type, needs_static_ip in machines_to_start:
-            instance = create_instance('%s-%s-%s' % (env.stage, cluster, name),
+            instance = create_instance('%s-%s%s' % (env.stage, cluster, '-' + name if name != cluster else ''),
                 key_name = key_name or fab_config['key_name'],
                 location = fab_config['region'],
                 image_id = settings.get('initial_image') or settings.get('image') or fab_config['image'],
                 size = settings['size'],
-                tags = {'Cluster': cluster, 'Stage': env.stage, 'Server Type': settings.get('server_type'), 'Instance Type': instance_type})
+                tags = {'Cluster': cluster, 'Stage': env.stage, 'Server Type': settings.get('server_type',''), 'Instance Type': instance_type})
             instances.append(instance)
             if needs_static_ip:
                 needsips.append([data, instance])
             if 'instances' not in data: data['instances'] = {}
             data['instances'][name] = instance.id
-            fab_data['machines'][env.stage]['%s-%s-%s' % (env.stage, cluster, name)] = {'id': instance.id} # Backwards Compat
+            fab_data['machines'][env.stage][name] = {'id': instance.id} # Backwards Compat
 
     # Wait for instances to start
     print colors.green('Waiting for instances to start...')
@@ -120,7 +129,7 @@ def go_setup(stage = None):
     my_id = run('curl http://169.254.169.254/latest/meta-data/instance-id')
     instance = ec2_instance(my_id)
     name = instance.tags[u'Name']
-    stage, cluster, instance_type = name.split('-')
+    stage, cluster, instance_type = scit(name)
     options = fab_config.cluster(cluster)
     cluster_data = fab_data.cluster(cluster)
     print cluster_data
@@ -128,7 +137,7 @@ def go_setup(stage = None):
             'server_type': options.get('server_type'),
             'cluster': cluster,
             'instance_type': instance_type,
-            'master_ip': cluster_data.get('static-ip') or fab_data.cluster(options['with_db_cluster'])['static-ip']}
+            'master_ip': (cluster_data.get('static-ip') or fab_data.cluster(options.get('with_db_cluster')) or {}).get('static-ip')}
     
     set_hostname(name)
     set_data(data)
@@ -158,6 +167,7 @@ def go_setup(stage = None):
                     replication = True
     
     prepare_server()
+    print options
     install_services(my_id, name, instance.public_dns_name, stage, options, replication = replication, master = master)
 
     if 'pgpool' in options['services']: #TODO: move this
@@ -211,7 +221,7 @@ def go_save_templates(stage = None):
     if not stage:
         raise Exception(colors.red('No stage provided'))
 
-    stage, cluster, instance_type = run('hostname').split('-')
+    stage, cluster, instance_type = scit(run('hostname'))
     if instance_type == 'template':
         data = fab_data.cluster(cluster)
         data['image'] = save_as_ami(cluster, deregister = data.get('image'))

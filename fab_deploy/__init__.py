@@ -52,3 +52,8 @@ from fab_deploy.db import *
 from fab_deploy.vcs import *
 
 from fab_deploy.conf import *
+
+# --- This horror will be fixed soon
+from fab_deploy.utils import *
+from fab_deploy.autoscale import *
+from fab_deploy.django_commands import *

@@ -3,7 +3,7 @@ from compiler.ast import Return
 from fab_deploy.virtualenv import virtualenv
 from fabric.api import env
 from fabric.decorators import runs_once, hosts
-from fabric.utils import abort
+from fabric.utils import abort, warn
 from functools import wraps
 from pprint import pformat
 import fabric.api
@@ -214,7 +214,11 @@ def sudo_put(file, loc):
 def combine(*dikts):
     master = {}
     for dikt in dikts:
-        master.update(dikt)
+        for k,v in dikt.iteritems():
+            if k in master and isinstance(master[k], dict) and isinstance(v, dict):
+                master[k] = combine(master[k], v)
+            else:
+                master[k] = v
     return master
 
 @runs_once
@@ -252,8 +256,9 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
     
 def find_instances(clusters = None, server_types = None, instance_types = None):
     
-    if env.stage is None:
-        abort('No stage provided')
+    if not hasattr(env, 'stage'):
+        warn(fabric.colors.yellow('No stage provided.  Defaulting to "production".'))
+        env.stage = 'production'
     
     print fabric.colors.green('Finding hosts...')
     if isinstance(clusters, basestring):

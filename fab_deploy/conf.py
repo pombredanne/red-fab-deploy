@@ -96,7 +96,7 @@ class FabDeployConfig(object):
         if hasattr(env, 'fab_deploy_settings'):
             self.load_python_settings(env.fab_deploy_settings)
             
-        for settings in self.config['clusters'].values():
+        for settings in self['clusters'].values():
             for default, value in CLUSTER_DEFAULTS.iteritems():
                 if default not in settings:
                     settings[default] = value
@@ -210,6 +210,8 @@ class FabDeployConfig(object):
     def has_key(self, key):
         return self.config.has_key(key)
     
+fab_config = FabDeployConfig()
+
 class FabDeployData(object):
     
     ''' 
@@ -226,6 +228,7 @@ class FabDeployData(object):
     def __init__(self):
         self._data = None
         self.filename = None
+        self.fab_config = fab_config
         
     def __del__(self):
         if self._data is not None:
@@ -259,7 +262,7 @@ class FabDeployData(object):
         
     def write_json_data(self):
         import simplejson
-        obj = simplejson.dumps(self.data, sort_keys=True, indent=4)
+        obj = simplejson.dumps(self.combine(self.fab_config.config, self.fab_config.compat, self.data), sort_keys=True, indent=4)
         f = open(self.filename, 'w')
         f.write(obj)
         f.close()
@@ -292,13 +295,23 @@ class FabDeployData(object):
     def has_key(self, key):
         return self.data.has_key(key)
     
-fab_config = FabDeployConfig()
+    def combine(self, *dikts):
+        master = {}
+        for dikt in dikts:
+            for k,v in dikt.iteritems():
+                if k in master and isinstance(master[k], dict) and isinstance(v, dict):
+                    master[k] = self.combine(master[k], v)
+                else:
+                    master[k] = v
+        return master
+
+
 fab_data = FabDeployData()
 
 ### Backwards compatibility methods ###
 def get_provider_dict():
     """ Get the dictionary of provider settings """
-    return combine(fab_config.config, fab_config.compat, fab_data.data) 
+    return combine(fab_config.config, fab_config.compat, fab_data.data)
 
 def write_conf(instance,filename=''):
     """ Overwrite the conf file with dictionary values """
