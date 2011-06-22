@@ -1,7 +1,5 @@
 # django-fab-deploy: django deployment tool
 
-NOTE: This branch has been abandoned as of 6/20/2011, most of the functionality will be rolled into a new deployment tool under development.  For now, use builder or the master branch of red-fab-deploy.
-
 red-fab-deploy is a collection of Fabric scripts for deploying and
 managing django projects on Debian/Ubuntu servers. License is MIT.
 
@@ -32,7 +30,22 @@ If you don't have a native package, they can be found at:
 
 ## Release Notes
 
-Skip this section if you've never used fab-deploy before.
+This software is beta quality at best.  It is not fully backwards compatible with earlier versions of red-fab-deploy, and postgresql autoscaling does not work all of the time.
+
+There will be other bugs too.
+
+### Configuration File Changes & Backwards Compatibility
+Configuration settings are now primarily stored in a python dictionary, instead of env.conf and a json file.  Some of the documentation below advertises backwards compatibility for RFD json conf files.  This does not actually work correctly; it will overwrite your conf file and remove some of the information.
+
+### Autoscaling
+Currently only fully works generic/web clusters that don't need inter-server communication.  Only will ever work on EC2.
+
+#### Postgresql Autoscaling: Further notes.
+Postgresql Autoscaling does not work correctly all of the time.  Pgpool is difficult and possibly a bad choice for this project.  Even if it does work, there are two important caveats:
+
+* Your clusters need to be named 'database' and 'web', with the correct server_types (see below).
+* Postgres autoscaling may turn off the server that has your database on it.  Right now there is no automatic backup.  Make sure this is what you want to do.
+
 
 ### Host Determination
 I had to remove fab auto-detecting the hosts from your config file as it was just creating too many problems.  So just setup your hosts with 'fab setup_hosts' first.
@@ -47,22 +60,6 @@ convention 'filename.<stage>.[ini|conf]', or be for any stage with 'filename.[in
 HOWEVER, you can specify an arbitrarily-named configuration file for many services using 'settings_file' in the 
 services dictionary, explained below.
 
-### Autoscaling
-Currently only works for postgresql and web, although anything that doesn't need inter-server communication should be fine.
-Autoscaling only works on EC2.  
-
-IMPORTANT: Right now for postgres autoscaling to work, your clusters need to be named 'database' and 'web', with the correct
-server_types (see below).
-
-ALSO IMPORTANT: Postgres autoscaling may turn off the server that has your database on it.  Right now there is no backup system.
-Make sure this is what you want to do.
-
-### Backwards Compatibility
-Every effort has been made to ensure backwards compatibility... but I'm sure something will be broken.  Sorry.
-
-### Configuration File Changes
-Configuration settings are now primarily stored in a python dictionary, instead of env.conf and a json file, although
-those should continue to work for the near future.  Deprication warnings will be given.  See below for details.
 
 ## Configuration
 
