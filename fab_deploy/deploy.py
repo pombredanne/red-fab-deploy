@@ -1,3 +1,4 @@
+import datetime
 import os.path
 import time
 
@@ -41,7 +42,7 @@ def go_setup(stage="development"):
 	"""
 	Install the correct services on each machine
 	
-    $ fab -i deploy/[your private SSH key here] set_hosts go_setup
+	$ fab -i deploy/[your private SSH key here] set_hosts go_setup
 	"""
 	stage_exists(stage)
 	PROVIDER = get_provider_dict()
@@ -127,15 +128,23 @@ def deploy_project(tagname, force=False, username="ubuntu"):
 	if tagname == 'trunk':
 		vcs.push(tagname)
 	else:
-		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
-		with fabric.api.lcd('/tmp'):
-			vcs.export(tagname, local=True)
+		#fabric.api.local('rm -rf %s' % tmp_tag))
+		#with fabric.api.lcd('/tmp'):
+		#	vcs.export(tagname, local=True)
+		if 'TMP_TIME' not in fabric.api.env.conf:
+			fabric.api.env.conf['TMP_TIME'] = datetime.datetime.now().strftime('%Y_%d_%m_%H_%M_%S')
+		tmp_tag = os.path.join('/tmp', '%s_%s' % (tagname,fabric.api.env.conf['TMP_TIME']))
+		if not os.path.isdir(tmp_tag):
+			fabric.api.puts(fabric.colors.green('Exporting tag %s to %s' % (tagname, tmp_tag)))
+			vcs.export(tmp_tag, local=True)
+		else:
+			fabric.api.warn(fabric.colors.yellow('Using existing export of tag %s at %s' % (tagname, tmp_tag)))
 		fabric.contrib.project.rsync_project(
-			local_dir = os.path.join('/tmp', tagname),
+			local_dir = tmp_tag,
 			remote_dir = fabric.api.env.conf['SRC_DIR'],
 			exclude = fabric.api.env.conf['RSYNC_EXCLUDE'],
 			extra_opts='--links --perms')
-		fabric.api.local('rm -rf %s' % os.path.join('/tmp', tagname))
+		#fabric.api.local('rm -rf %s' % tmp_tag)
 
 	virtualenv_create(dir=tag_dir)
 	pip_install(dir=tag_dir)
