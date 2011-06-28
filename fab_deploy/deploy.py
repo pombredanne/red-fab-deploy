@@ -16,10 +16,11 @@ from fab_deploy.system import get_hostname, set_hostname, prepare_server
 from fab_deploy import vcs
 from fab_deploy.virtualenv import pip_install, virtualenv_create
 
+
 def go(stage="development", key_name='ec2.development'):
-    """ 
+    """
     A convenience method to prepare AWS servers.
-    
+
     Use this to create keys, authorize ports, and deploy instances.
     DO NOT use this step if you've already created keys and opened
     ports on your ec2 instance.
@@ -27,21 +28,22 @@ def go(stage="development", key_name='ec2.development'):
 
     # Get the provider and key_name
     provider = fabric.api.env.conf['PROVIDER']
-    key_name = '%s.%s' % (provider,key_name)
-    
+    key_name = '%s.%s' % (provider, key_name)
+
     # Setup keys and authorize ports
     ec2_create_key(key_name)
-    ec2_authorize_port('default','tcp','22')
-    ec2_authorize_port('default','tcp','80')
+    ec2_authorize_port('default', 'tcp', '22')
+    ec2_authorize_port('default', 'tcp', '80')
 
     # Deploy the instances for the given stage
-    deploy_instances(stage,key_name)
+    deploy_instances(stage, key_name)
     update_instances()
+
 
 def go_setup(stage="development"):
     """
     Install the correct services on each machine
-    
+
     $ fab -i deploy/[your private SSH key here] set_hosts go_setup
     """
     stage_exists(stage)
@@ -49,10 +51,13 @@ def go_setup(stage="development"):
 
     # Determine if a master/slave relationship exists for databases in config
     slave = []
-    for db in ['mysql','postgresql','postgresql-client']:
-        slave.append(any(['slave' in PROVIDER['machines'][stage][name].get('services',{}).get(db,{}) for name in PROVIDER['machines'][stage]]))
+    for db in ['mysql', 'postgresql', 'postgresql-client']:
+        slave.append(
+            any(['slave' in PROVIDER['machines'][stage][name].get(
+                'services', {}).get(
+                    db, {}) for name in PROVIDER['machines'][stage]]))
     replication = any(slave)
-    
+
     # Begin installing and setting up services
     for name in PROVIDER['machines'][stage]:
         instance_dict = PROVIDER['machines'][stage][name]
@@ -73,7 +78,7 @@ def go_setup(stage="development"):
                     uwsgi_setup(stage=stage)
                 elif service == 'mysql':
                     mysql_install()
-                    mysql_setup(stage=stage,replication=replication,**settings)
+                    mysql_setup(stage=stage, replication=replication, **settings)
                 elif service == 'postgresql':
                     postgresql_install(name, instance_dict, stage=stage, **settings)
                     postgresql_setup(name, instance_dict, stage=stage, **settings)
@@ -84,10 +89,11 @@ def go_setup(stage="development"):
                 else:
                     fabric.api.warn('%s is not an available service' % service)
 
+
 def go_deploy(stage="development", tagname="trunk", username="ubuntu", full=True):
     """
     Deploy project and make active on any machine with server software
-    
+
     $ fab -i deploy/[your private SSH key here] set_hosts go_deploy
     """
     stage_exists(stage)
@@ -100,19 +106,21 @@ def go_deploy(stage="development", tagname="trunk", username="ubuntu", full=True
             service = instance_dict['services']
             # If any of these services are listed then deploy the project
 
-            if list(set(['nginx','uwsgi','apache']) & set(instance_dict['services'])):
+            if list(set(['nginx', 'uwsgi', 'apache']) & set(instance_dict['services'])):
                 if full:
-                    deploy_full(tagname,force=True,username=username)
+                    deploy_full(tagname, force=True, username=username)
                 else:
-                    deploy_project(tagname,force=True,username=username)
-    
+                    deploy_project(tagname, force=True, username=username)
+
+
 def deploy_full(tagname, force=False, username="ubuntu"):
-    """ 
+    """
     Deploys a project with a given tag name, and then makes
     that deployment the active deployment on the server.
     """
-    deploy_project(tagname,force=force,username=username)
+    deploy_project(tagname, force=force, username=username)
     make_active(tagname)
+
 
 def deploy_project(tagname, force=False, username="ubuntu"):
     """ Deploys project on prepared server. """
@@ -133,45 +141,50 @@ def deploy_project(tagname, force=False, username="ubuntu"):
         #   vcs.export(tagname, local=True)
         if 'TMP_TIME' not in fabric.api.env.conf:
             fabric.api.env.conf['TMP_TIME'] = datetime.datetime.now().strftime('%Y_%d_%m_%H_%M_%S')
-        tmp_tag = os.path.join('/tmp', '%s_%s' % (tagname,fabric.api.env.conf['TMP_TIME']))
+        tmp_tag = os.path.join('/tmp', '%s_%s' % (tagname, fabric.api.env.conf['TMP_TIME']))
         if not os.path.isdir(tmp_tag):
             fabric.api.puts(fabric.colors.green('Exporting tag %s to %s' % (tagname, tmp_tag)))
             vcs.export(tmp_tag, local=True)
         else:
             fabric.api.warn(fabric.colors.yellow('Using existing export of tag %s at %s' % (tagname, tmp_tag)))
         fabric.contrib.project.rsync_project(
-            local_dir = tmp_tag,
-            remote_dir = fabric.api.env.conf['SRC_DIR'],
-            exclude = fabric.api.env.conf['RSYNC_EXCLUDE'],
+            local_dir=tmp_tag,
+            remote_dir=fabric.api.env.conf['SRC_DIR'],
+            exclude=fabric.api.env.conf['RSYNC_EXCLUDE'],
             extra_opts='--links --perms')
         #fabric.api.local('rm -rf %s' % tmp_tag)
 
     virtualenv_create(dir=tag_dir)
     pip_install(dir=tag_dir)
-    
-    fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
+
+    fabric.api.sudo('chown -R %s:%s /srv' % (username, username))
+
 
 def make_src_dir(username='ubuntu'):
     """ Makes the /srv/<project>/ directory and creates the correct permissions """
     fabric.api.sudo('mkdir -p %s' % (fabric.api.env.conf['SRC_DIR']))
-    fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
+    fabric.api.sudo('chown -R %s:%s /srv' % (username, username))
+
 
 def make_active(tagname):
     """ Make a tag at /srv/<project>/<tagname>  active """
     link(os.path.join(fabric.api.env.conf['SRC_DIR'], tagname),
             '/srv/active', do_unlink=True, silent=True)
 
+
 def check_active():
     """ Abort if there is no active deployment """
     if not link_exists('/srv/active'):
         fabric.api.abort(fabric.colors.red('There is no active deployment'))
 
+
 def link_host(hostfile):
     """ Link the hostname to the host file """
     check_active()
     link(os.path.join('/srv/active/project/hosts', hostfile),
-         os.path.join('/srv/active/project/hosts', '%s.py' % get_hostname()), 
+         os.path.join('/srv/active/project/hosts', '%s.py' % get_hostname()),
          do_unlink=True, silent=True)
+
 
 def undeploy():
     """ Shuts site down. This command doesn't clean everything, e.g.
@@ -182,4 +195,3 @@ def undeploy():
 
     web_server_stop()
     unlink('/srv/active')
-
