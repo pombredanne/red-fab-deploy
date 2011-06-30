@@ -139,12 +139,10 @@ def deploy_project(tagname, force=False, username="ubuntu"):
         #fabric.api.local('rm -rf %s' % tmp_tag))
         #with fabric.api.lcd('/tmp'):
         #   vcs.export(tagname, local=True)
-        if 'TMP_TIME' not in fabric.api.env.conf:
-            fabric.api.env.conf['TMP_TIME'] = datetime.datetime.now().strftime('%Y_%d_%m_%H_%M_%S')
-        tmp_tag = os.path.join('/tmp', '%s_%s' % (tagname, fabric.api.env.conf['TMP_TIME']))
+        tmp_tag = os.path.join('/tmp', '%s' % (tagname))
         if not os.path.isdir(tmp_tag):
             fabric.api.puts(fabric.colors.green('Exporting tag %s to %s' % (tagname, tmp_tag)))
-            vcs.export(tmp_tag, local=True)
+            vcs.export(tagname, export_dir=tmp_tag, local=True)
         else:
             fabric.api.warn(fabric.colors.yellow('Using existing export of tag %s at %s' % (tagname, tmp_tag)))
         fabric.contrib.project.rsync_project(
