@@ -12,8 +12,8 @@
 
 # From http://library.linode.com/web-servers/nginx/python-uwsgi/reference/init-deb.sh
 
-PATH=/opt/uwsgi:/sbin:/bin:/usr/sbin:/usr/bin
-DAEMON=/usr/bin/uwsgi
+PATH=/opt/uwsgi:/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
+DAEMON=`which uwsgi`
 
 OWNER=root #uwsgi chowns itself
 
