@@ -129,6 +129,7 @@ def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, 
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
 	if fabric.contrib.files.exists(tag_dir):
 		if force:
+			raise Exception
 			fabric.api.warn(fabric.colors.yellow('Removing directory %s and all its contents.' % tag_dir))
 			fabric.api.run('rm -rf %s' % tag_dir)
 		elif not use_existing:
