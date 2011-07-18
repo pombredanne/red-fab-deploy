@@ -7,3 +7,4 @@ PATH=.:~/bin:$PATH
 DISPLAY=:0
 export EDITOR=vim
 shopt -s globstar
+export PIP_DOWNLOAD_CACHE=$HOME/.pip_download_cache
