@@ -85,6 +85,7 @@ def install_common_packages():
 		'psmisc',
 		'python2.6',
 		'python2.6-dev',
+		'python-dev',
 		'python-imaging',
 		'python-mysqldb',
 		'python-pip',
