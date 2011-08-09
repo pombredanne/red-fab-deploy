@@ -5,4 +5,5 @@ from fab_deploy.db.mysql import (mysql_install, mysql_setup,
 from fab_deploy.db.postgresql import (postgresql_install, 
 	postgresql_client_install, postgresql_setup, )
 from fab_deploy.db.redis import (redis_install, redis_setup,
-	redis_start, )
+    redis_start, )
+from fab_deploy.db.nodejs import (nodejs_install, nodejs_setup, )

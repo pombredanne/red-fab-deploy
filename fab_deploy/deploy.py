@@ -73,6 +73,9 @@ def go_setup(stage="development"):
                 elif service == 'redis':
                     redis_install()
                     redis_setup()
+                elif service == 'nodejs':
+                    nodejs_install()
+                    nodejs_setup()
                 elif service == 'uwsgi':
                     uwsgi_install()
                     uwsgi_setup(stage=stage)
