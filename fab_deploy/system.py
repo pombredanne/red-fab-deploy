@@ -60,6 +60,7 @@ def setup_backports():
 		'squeeze'  : 'http://backports.debian.org/debian-backports squeeze-backports main contrib non-free',
 		'lucid'    : 'http://archive.ubuntu.com/ubuntu lucid-backports main universe multiverse restricted',
 		'maverick' : 'http://archive.ubuntu.com/ubuntu maverick-backports main universe multiverse restricted',
+		'natty'    : 'http://archive.ubuntu.com/ubuntu natty-backports main universe multiverse restricted',
 	}
 
 	if os in backports:

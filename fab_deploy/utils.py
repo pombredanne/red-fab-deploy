@@ -13,6 +13,7 @@ def _codename(distname, version, id):
 		('squeeze',  ('debian', '^6', '')),
 		('lucid',    ('Ubuntu', '^10.04', '')),
 		('maverick', ('Ubuntu', '^10.10', '')),
+		('natty',    ('Ubuntu', '^11.04', '')),
 	]
 	for name, p in patterns:
 		if re.match(p[0], distname) and re.match(p[1], version) and re.match(p[2], id):

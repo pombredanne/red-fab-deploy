@@ -39,6 +39,7 @@ def mysql_install():
 		'sqeeze': '5.1',
 		'lucid': '5.1',
 		'maverick': '5.1',
+		'natty': '5.1',
 	}
 	version = mysql_versions[os]
 
@@ -62,6 +63,7 @@ def mysql_install():
 		'sqeeze'  : ['libmysqlclient-dev',],
 		'lucid'   : ['libmysqlclient-dev',],
 		'maverick': ['libmysqlclient-dev',],
+		'natty'   : ['libmysqlclient-dev',],
 	}
 	package_install(common_packages + extra_packages[os], "--no-install-recommends")
 
