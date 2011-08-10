@@ -15,7 +15,6 @@ def nodejs_install():
 	package_add_repository('ppa:chris-lea/node.js')
 	package_install(['python-software-properties', 'nodejs'])
 	fabric.api.sudo('curl http://npmjs.org/install.sh | sudo sh')
-	fabric.api.sudo('npm install socket.io redis')
 
 def nodejs_setup():
 	""" Setup nodejs."""
