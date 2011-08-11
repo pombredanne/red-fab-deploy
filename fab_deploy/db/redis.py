@@ -1,5 +1,6 @@
 import fabric.api
 
+from fab_deploy.file import link, unlink
 from fab_deploy.package import package_install
 
 def _redis_is_installed():
@@ -15,12 +16,19 @@ def redis_install():
 
 	package_install(['redis-server'])
 
-def redis_setup():
-	""" Setup redis-server. """
-	pass
+def redis_setup(stage=''):
+	""" Setup redis. """
+	redis_file = '/etc/redis/redis.conf'
+	if fabric.contrib.files.exists(redis_file):
+		fabric.api.sudo('mv %s %s.bkp' % (redis_file,redis_file))
+	if stage:
+		stage = '.%s' % stage
+	link('/srv/active/deploy/redis%s.conf' % stage, dest=redis_file,
+		use_sudo=True, do_unlink=True, silent=True)
 
 def redis_start():
 	""" Start Nginx """
 	fabric.api.run('redis-server')
+
 
 
