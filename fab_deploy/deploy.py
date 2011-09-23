@@ -123,9 +123,9 @@ def deploy_full(tagname, force=False, username="ubuntu", use_existing=False):
 	make_active(tagname)
 	web_server_restart()
 
-def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, with_full_virtualenv=True):
+def deploy_project(tagname, force=False, username="ubuntu", groupname='ubuntu', use_existing=False, with_full_virtualenv=True):
 	""" Deploys project on prepared server. """
-	make_src_dir(username=username)
+	make_src_dir(username=username,groupname=groupname)
 	tag_dir = os.path.join(fabric.api.env.conf['SRC_DIR'], tagname)
 	if fabric.contrib.files.exists(tag_dir):
 		if force:
@@ -149,12 +149,12 @@ def deploy_project(tagname, force=False, username="ubuntu", use_existing=False, 
 	if with_full_virtualenv:
 		pip_install(dir = tag_dir)
 	
-	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
+	fabric.api.sudo('chown -R %s:%s /srv' % (username,groupname))
 
-def make_src_dir(username='ubuntu'):
+def make_src_dir(username='ubuntu',groupname='ubuntu'):
 	""" Makes the /srv/<project>/ directory and creates the correct permissions """
 	fabric.api.sudo('mkdir -p %s' % (fabric.api.env.conf['SRC_DIR']))
-	fabric.api.sudo('chown -R %s:%s /srv' % (username,username))
+	fabric.api.sudo('chown -R %s:%s /srv' % (username,groupname))
 
 def make_active(tagname):
 	""" Make a tag at /srv/<project>/<tagname>  active """

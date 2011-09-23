@@ -255,7 +255,8 @@ def setup_hosts(clusters = None, server_types = None, instance_types = None):
                              instance_types or getattr(env, 'instance_types', None)))
     
 def find_instances(clusters = None, server_types = None, instance_types = None):
-    
+    from fab_deploy.conf import fab_config
+
     if not hasattr(env, 'stage'):
         warn(fabric.colors.yellow('No stage provided.  Defaulting to "production".'))
         env.stage = 'production'
@@ -267,15 +268,26 @@ def find_instances(clusters = None, server_types = None, instance_types = None):
         server_types = [server_types]
     if isinstance(instance_types, basestring):
         instance_types = [instance_types]
-    
-    from fab_deploy.aws import aws_connection_opts, ec2_connection
-    from fab_deploy.conf import fab_config
-    from fab_deploy.aws import ec2_region, ec2_location, ec2_instance
-    ec2 = ec2_connection()
-    
-    instances = {}
+        
     if not hasattr(env, 'instances'):
-        # Get autoscaled instances
+        instances = {}
+        for cluster, settings in fab_config['clusters'].iteritems():
+            for instance in settings.get('instances', []):
+                instances[instance] = {'stage': env.stage,
+                                       'cluster': cluster,
+                                       'server_type': settings.get('server_type'),
+                                       'instance_type': ''}
+        if instances:
+            env.instances = instances
+
+    if not hasattr(env, 'instances'):
+        from fab_deploy.aws import aws_connection_opts, ec2_connection
+        from fab_deploy.aws import ec2_region, ec2_location, ec2_instance
+        ec2 = ec2_connection()
+        
+        instances = {}        # Get autoscaled instances
+        
+        
         conn = AutoScaleConnection(fab_config['aws_access_key_id'], fab_config['aws_secret_access_key'],
                                region = ec2_region('%s.autoscaling.amazonaws.com' % ec2_location()))
         

@@ -203,8 +203,8 @@ def go_deploy_tag(tagname, stage = None, force = False, use_existing = False, fu
     data = get_data()
     options = fab_config.cluster(data['cluster'])
     
-    if options.get('autoscale') or 'uwsgi' in options['services'] or 'apache' in options['services']:
-        deploy_project(tagname, force = force, use_existing = use_existing, with_full_virtualenv = data.get('server_type') != SERVER_TYPE_DB)
+    if options.get('autoscale') or data['server_type'] == SERVER_TYPE_WEB:
+        deploy_project(tagname, force = force, use_existing = use_existing, with_full_virtualenv = data.get('server_type') != SERVER_TYPE_DB, username=options.get('instance_user_name', 'ubuntu'), groupname=options.get('instance_group_name', 'ubuntu'))
         
         if full:
             make_active(tagname)

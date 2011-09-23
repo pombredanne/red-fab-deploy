@@ -1,9 +1,10 @@
 import fabric.api
+from fab_deploy.conf import fab_config
 
 def get_vcs():
 	""" Returns a module with current VCS """
-	name = fabric.api.env.conf['VCS']
-	return __import__(name, fromlist=name.split('.')[1:])
+	name = fab_config.get('vcs')
+	return __import__(name, globals(), fromlist=name.split('.')[1:])
 
 def init():
 	get_vcs().init()

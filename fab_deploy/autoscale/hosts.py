@@ -14,7 +14,9 @@ def set_hosts(hosts):
             host = ec2_instance(host)
         if not isinstance(host, basestring):
             host = host.public_dns_name
-        env.hosts.append('ubuntu@%s' % host)
+        if '@' not in host:
+            host = 'ubuntu@%s' % host
+        env.hosts.append(host)
 
 @runs_once
 def localhost():
