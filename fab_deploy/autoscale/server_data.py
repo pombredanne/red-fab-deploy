@@ -7,7 +7,7 @@ def local_run(cmd):
 def get_data():
     ''' Retrieve stage, server type, and cluster name from server.  Returns dict of those. '''
     for cluster, settings in fab_config['clusters'].iteritems():
-        if env.host_string in settings.get('instances'):
+        if env.host_string in settings.get('instances', []):
             return {'stage': env.stage,
                     'server_type': settings['server_type'],
                     'cluster': cluster,

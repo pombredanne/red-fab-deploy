@@ -3,7 +3,7 @@ from fab_deploy.conf import fab_config
 
 def get_vcs():
 	""" Returns a module with current VCS """
-	name = fab_config.get('vcs')
+	name = fab_config.get('vcs', 'svn')
 	return __import__(name, globals(), fromlist=name.split('.')[1:])
 
 def init():

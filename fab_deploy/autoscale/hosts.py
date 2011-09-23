@@ -10,6 +10,7 @@ def set_hosts(hosts):
     if not isinstance(hosts, (list, tuple)):
         hosts = [hosts]
     for host in hosts:
+        print host
         if isinstance(host, basestring) and host.startswith('i-'):
             host = ec2_instance(host)
         if not isinstance(host, basestring):
