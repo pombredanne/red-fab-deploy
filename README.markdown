@@ -3,7 +3,6 @@
 red-fab-deploy is a collection of Fabric scripts for deploying and
 managing django projects on Debian/Ubuntu servers. License is MIT.
 
-Maintainer: Chris Gilmer at FF0000
 
 This project is specifically targeted at deploying websites built using
 the `pypeton <https://github.com/ff0000/pypeton>` project creation tool.
