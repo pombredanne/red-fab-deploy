@@ -18,7 +18,7 @@ def parse_requirements(file_name):
 			pass
 		else:
 			requirements.append(line)
-	
+
 	return requirements
 
 def parse_dependency_links(file_name):
@@ -26,28 +26,23 @@ def parse_dependency_links(file_name):
 	for line in open(file_name, 'r').read().split('\n'):
 		if re.match(r'\s*-[ef]\s+', line):
 			dependency_links.append(re.sub(r'\s*-[ef]\s+', '', line))
-	
+
 	return dependency_links
 
 setup(
     name = 'red-fab-deploy',
     packages=[
 		'fab_deploy',
-		'fab_deploy.db',
-		'fab_deploy.server',
-		'fab_deploy.vcs'
+		'fab_deploy.joyent',
+		'fab_deploy.local',
 		],
-	version = 'v0.0.1',
+	version = 'v0.0.2',
     author='RED Interactive Agency',
     author_email='geeks@ff0000.com',
 
     package_data={
         'fab_deploy': [
-			'cacert.pem',
-            'templates/.*rc',
-            'templates/.vim/*.vim',
-            'templates/.vim/doc/*.doc',
-            'templates/.vim/plugin/*.vim',
+            'default-configs/*',
         ]
     },
 

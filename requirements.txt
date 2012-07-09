@@ -1,4 +1,1 @@
-fabric==1.0
--e git+git://github.com/ff0000/pycolors2.git#egg=pycolors
-boto
-simplejson 
+fabric==1.4.3
