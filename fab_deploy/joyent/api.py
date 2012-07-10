@@ -61,11 +61,11 @@ class New(Task):
         print "added machine %s" % public_ip
         host_string = 'admin@%s' % public_ip
 
-        sys.stdout.write("waiting for machine to be ready")
+        print "waiting for machine to be ready"
         while machine.status() != 'running':
-            sys.stdout.write('.')
+            print '.'
             time.sleep(5)
-        print '  done'
+        print 'done'
 
         execute(setup_name, name=kwargs.get('name'), hosts=[host_string])
 
