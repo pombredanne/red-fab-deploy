@@ -8,6 +8,13 @@ from fabric.tasks import Task
 DEFAULT_CONF_FILE = 'ipf/ipf.conf'
 
 class FirewallSingleSync(Task):
+    """
+    Sync a ipf config file
+
+    Takes one required argument:
+        filename: the full path to the file to sync.
+    """
+
     name = 'sync_single'
 
     def run(self, filename=None):
@@ -22,6 +29,22 @@ class FirewallSingleSync(Task):
         run('svcadm restart ipfilter')
 
 class FirewallUpdate(Task):
+    """
+    Update ipf config file(s)
+
+    Takes one argument:
+        section: The name of the section in your server.ini that you
+                 would like to update. If section is not provided all
+                 sections will be updated.
+
+    Changes made by this task are not commited to your repo, or deployed
+    anywhere automatically. You should review any changes and commit and
+    deploy as appropriate.
+
+    This is a serial task, that should not be called directly
+    with any remote hosts as it performs no remote actions.
+    """
+
     name = 'update_files'
     serial = True
 

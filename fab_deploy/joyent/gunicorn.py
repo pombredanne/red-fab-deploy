@@ -2,6 +2,10 @@ from fabric.api import run, sudo, env
 from fabric.tasks import Task
 
 class GunicornInstall(Task):
+    """
+    Install gunicorn and set it up with svcadm.
+    """
+
     name = 'setup'
 
     def run(self):

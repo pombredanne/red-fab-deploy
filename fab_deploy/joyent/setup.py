@@ -6,6 +6,15 @@ from fab_deploy import functions
 import utils
 
 class BaseSetup(Task):
+    """
+    Base server setup.
+
+    Installs ipfilter and adds firewall config
+
+    Sets up ssh so root cannot login and other logins must
+    be key based.
+    """
+
     # Because setup tasks modify the config file
     # they should always be run serially.
     serial = True
@@ -53,6 +62,17 @@ class BaseSetup(Task):
                 execute('firewall.update_files', section=section)
 
 class LBSetup(BaseSetup):
+    """
+    Setup a load balancer
+
+    After base setup installs nginx setups a git repo. Then
+    calls the deploy task.
+
+    Once finished it calls 'nginx.update_allowed_ips'
+
+    This is a serial task as it modifies local config files.
+    """
+
     name = 'lb_server'
 
     config_section = 'load-balancer'
@@ -104,6 +124,18 @@ class LBSetup(BaseSetup):
         run('svcadm enable nginx')
 
 class AppSetup(LBSetup):
+    """
+    Setup a app-server
+
+    Inherits from lb_setup so does everything it does.
+    Also installs gunicorn, python, and other base packages.
+    Runs the scripts/setup.sh script.
+
+    Once finished it calls 'nginx.update_app_servers'
+
+    This is a serial task as it modifies local config files.
+    """
+
     name = 'app_server'
 
     config_section = 'app-server'

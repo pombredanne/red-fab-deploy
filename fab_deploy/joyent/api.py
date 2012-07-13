@@ -12,7 +12,44 @@ DEFAULT_PACKAGE = 'Small 1GB'
 DEFAULT_DATASET = 'smartos64'
 
 class New(Task):
+    """
+    Provisions and sets up a new joyent server.
+
+    Uses the joyent API for provisioning a new server. In order
+    to run this task your fabfile must contain a line like:
+        joyent_account = 'account_name'
+
+    Takes the following arguments:
+        dataset: The name of the joyent data set you want to use.
+                 Defaults to Small 1GB.
+        server_size: The size server you want. Defaults to smartos64.
+        type: Required. The type of server you are provisioning. This
+              should correspond to a setup task. If no such task is
+              found an error will be raised.
+        data_center: The datacenter to provision this server in.
+                     If not provided your env will be checked for
+                     joyent_default_data_center if that does not exist
+                     either an error will be raised.
+
+    You will be prompted to enter your ssh key name, this should correspond
+    with the name that was used when your key was registered with this joyent
+    account.
+
+    Once your machine is provisioned and ready (this can take up to 10 mins).
+    The setup task you provided will be run.
+
+    Please note that care should be taken when running this command to make
+    sure that too many machines are not created. If an error occurs while
+    waiting for the machine to be ready or while running the setup task
+    this command should not be run again or another machine will be provisioned.
+    Rememeber setup tasks can be executed directly.
+
+    This is a serial task and should not be called with any hosts
+    as the provisioned server ends up being the remote host.
+    """
+
     name = 'add_server'
+    serial = True
 
     def run(self, **kwargs):
         assert not env.hosts

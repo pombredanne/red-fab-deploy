@@ -1,6 +1,10 @@
 import ConfigParser
 
 class CustomConfig(ConfigParser.ConfigParser):
+    """
+    Custom Config class that can read and write lists.
+    """
+
     # Config settings
     CONNECTIONS = 'connections'
     INTERNAL_IPS = 'internal-ips'

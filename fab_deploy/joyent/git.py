@@ -9,6 +9,12 @@ from fab_deploy.functions import get_config_filepath
 DEFAULT_GIT_HOOK = 'git/post-receive'
 
 class Install(Task):
+    """
+    Setup a remote git repo
+
+    Installs git and creates a repo using env.git_repo_name
+    for the location.
+    """
     name = 'setup'
 
     def run(self, branch=None, hook=None, hosts=[]):
@@ -29,6 +35,17 @@ class Install(Task):
         run('git init --bare %s' % env.git_repo_name)
 
 class UpdateHook(Task):
+    """
+    Update the post-receive hook
+
+    Copy a post-receive hook to the remote server and make
+    sure it is executable.
+
+    Takes an optional argument:
+        hook: Path to the hook you want installed. If not
+              given the default git/post-receive is used.
+    """
+
     name = 'update_hook'
 
     def run(self, hook=None):

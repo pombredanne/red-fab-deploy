@@ -4,6 +4,19 @@ from fabric.tasks import Task
 from fab_deploy import functions
 
 class FirewallSync(Task):
+    """
+    Updates the firewall on a live server.
+
+    Calls 'firewall.update_files' and then updates the
+    remote servers using 'firewall.sync_single'
+
+    Takes the same arguments as 'firewall.update_files
+
+    While this task will deploy any changes it makes they
+    are not commited to your repo. You should review any
+    changes and commit as appropriate.
+    """
+
     name = 'firewall_sync'
     serial = True
 

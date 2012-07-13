@@ -6,6 +6,18 @@ from fabric.tasks import Task
 DEFAULT_NGINX_CONF = "nginx/nginx.conf"
 
 class NginxInstall(Task):
+    """
+    Install nginx
+
+    Takes one optional argument:
+        nginx_conf: the relative path of the nginx config file
+                    (that is part of your repo) that you want use
+                    as your nginx config. If not provided it will
+                    default to nginx/nginx.conf
+
+    Also sets up log rotation
+    """
+
     name = 'setup'
 
     def run(self, nginx_conf=None, hosts=[]):
@@ -34,6 +46,21 @@ class NginxInstall(Task):
         sudo('ln -sf %s /opt/local/etc/nginx/nginx.conf' % remote_conv)
 
 class UpdateAppServers(Task):
+    """
+    Build app servers list in your load balancer nginx config.
+
+    Finds your load banlancer nginx config by looking up
+    the attribute on the task and rebuilds the list of
+    app servers.
+
+    Changes made by this task are not commited to your repo, or deployed
+    anywhere automatically. You should review any changes and commit and
+    deploy as appropriate.
+
+    This is a serial task, that should not be called directly
+    with any remote hosts as it performs no remote actions.
+    """
+
     START_DELM = "## Start App Servers ##"
     END_DELM = "## End App Servers ##"
     LINE = "server   %s:8000 max_fails=5  fail_timeout=60s;"
@@ -66,6 +93,21 @@ class UpdateAppServers(Task):
         self._update_file(nginx_conf, section)
 
 class UpdateAllowedIPs(UpdateAppServers):
+    """
+    Build allowed servers list in your app server nginx config.
+
+    Finds your app server nginx config by looking up
+    the attribute on the task and rebuilds the list of
+    app servers.
+
+    Changes made by this task are not commited to your repo, or deployed
+    anywhere automatically. You should review any changes and commit and
+    deploy as appropriate.
+
+    This is a serial task, that should not be called directly
+    with any remote hosts as it performs no remote actions.
+    """
+
     START_DELM = "## Start Allowed IPs ##"
     END_DELM = "## End Allowed IPs ##"
     LINE = "set_real_ip_from  %s;"
