@@ -89,9 +89,9 @@ class UpdateAppServers(Task):
         new_path = file_path + 'bak'
         cmd = "awk '{\
                if ($0==\"%s\") { \
-                    print $0; print \"%s\"; \
+                    print \"%s\"; \
                     while(getline>0){if ($0==\"%s\") break;} \
-                    print $0; next;} \
+                    next;} \
                 {print $0}}' %s > %s" %(self.START_DELM, txt, self.END_DELM,
                                         file_path, new_path)
         local(cmd)
