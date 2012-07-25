@@ -1,3 +1,4 @@
+import sys
 from fabric.api import task, run, sudo, execute, env
 from fabric.tasks import Task
 
@@ -103,7 +104,11 @@ class LBSetup(BaseSetup):
         execute('local.git.push', branch=self.git_branch)
 
     def run(self, name=None):
-        self._update_config(self.config_section)
+        if env.host_string:
+            self._update_config(self.config_section)
+        else:
+            print "env.host_string is None, please specify a host by -H "
+            sys.exit()
         self._add_remote(name=name)
 
         # Transfer files first so all configs are in place.
@@ -160,5 +165,26 @@ class AppSetup(LBSetup):
         execute('gunicorn.setup')
         run('svcadm enable gunicorn')
 
+class DevSetup(AppSetup):
+    """
+    Setup a development server
+    """
+    name = 'dev_server'
+    config_section = 'dev-server'
+
+    def _install_packages(self):
+        sudo('pkg_add postgresql91-server')
+        sudo('pkg_add python27')
+        sudo('pkg_add py27-psycopg2')
+        sudo('pkg_add py27-setuptools')
+        sudo('easy_install-2.7 pip')
+        sudo('pip install virtualenv')
+        run('sh %s/scripts/setup.sh development' % env.git_working_dir)
+
+    def _setup_services(self):
+        super(DevSetup, self)._setup_services()
+        run('svcadm enable postgresql')
+
 app_server = AppSetup()
 lb_server = LBSetup()
+dev_server = DevSetup()
