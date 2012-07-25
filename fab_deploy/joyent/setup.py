@@ -1,3 +1,4 @@
+import sys
 from fabric.api import task, run, sudo, execute, env
 from fabric.tasks import Task
 
@@ -103,7 +104,11 @@ class LBSetup(BaseSetup):
         execute('local.git.push', branch=self.git_branch)
 
     def run(self, name=None):
-        self._update_config(self.config_section)
+        if env.host_string:
+            self._update_config(self.config_section)
+        else:
+            print "env.host_string is None, please specify a host by -H "
+            sys.exit()
         self._add_remote(name=name)
 
         # Transfer files first so all configs are in place.
