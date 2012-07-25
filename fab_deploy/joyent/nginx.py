@@ -86,7 +86,7 @@ class UpdateAppServers(Task):
         txt = "\\n".join(text)
         cmd = "sed -i '/%s/,/%s/ c %s' %s" % (self.START_DELM, self.END_DELM, txt,
                                               file_path)
-        new_path = file_path + 'bak'
+        new_path = file_path + '.bak'
         cmd = "awk '{\
                if ($0==\"%s\") { \
                     print \"%s\"; \

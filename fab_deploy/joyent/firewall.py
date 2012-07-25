@@ -99,7 +99,7 @@ class FirewallUpdate(Task):
     def _save_to_file(self, section, text):
         file_path = self.get_section_path(section)
 
-        new_path = file_path + 'bak'
+        new_path = file_path + '.bak'
         cmd = "awk '{\
                if ($0==\"%s\") { \
                     print \"%s\"; \
