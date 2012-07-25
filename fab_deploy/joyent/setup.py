@@ -152,12 +152,15 @@ class AppSetup(LBSetup):
         execute('nginx.update_app_servers', nginx_conf=task.nginx_conf,
                         section=self.config_section)
 
-    def _install_packages(self):
+    def _install_venv(self):
         sudo('pkg_add python27')
         sudo('pkg_add py27-psycopg2')
         sudo('pkg_add py27-setuptools')
         sudo('easy_install-2.7 pip')
         sudo('pip install virtualenv')
+
+    def _install_packages(self):
+        self._install_venv()
         run('sh %s/scripts/setup.sh production' % env.git_working_dir)
 
     def _setup_services(self):
@@ -173,12 +176,8 @@ class DevSetup(AppSetup):
     config_section = 'dev-server'
 
     def _install_packages(self):
+        self._install_venv()
         sudo('pkg_add postgresql91-server')
-        sudo('pkg_add python27')
-        sudo('pkg_add py27-psycopg2')
-        sudo('pkg_add py27-setuptools')
-        sudo('easy_install-2.7 pip')
-        sudo('pip install virtualenv')
         run('sh %s/scripts/setup.sh development' % env.git_working_dir)
 
     def _setup_services(self):
