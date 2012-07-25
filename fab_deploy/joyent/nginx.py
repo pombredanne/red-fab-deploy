@@ -84,13 +84,12 @@ class UpdateAppServers(Task):
         text.append(self.END_DELM)
 
         txt = "\\n".join(text)
-        cmd = "sed -i '/%s/,/%s/ c %s' %s" % (self.START_DELM, self.END_DELM, txt,
-                                              file_path)
         new_path = file_path + '.bak'
         cmd = "awk '{\
-               if ($0==\"%s\") { \
+                tmp = match($0, \"%s\"); \
+                if (tmp) { \
                     print \"%s\"; \
-                    while(getline>0){if ($0==\"%s\") break;} \
+                    while(getline>0){tmp2 = match($0, \"%s\"); if (tmp2) break;} \
                     next;} \
                 {print $0}}' %s > %s" %(self.START_DELM, txt, self.END_DELM,
                                         file_path, new_path)
