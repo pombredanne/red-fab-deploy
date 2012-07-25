@@ -86,7 +86,16 @@ class UpdateAppServers(Task):
         txt = "\\n".join(text)
         cmd = "sed -i '/%s/,/%s/ c %s' %s" % (self.START_DELM, self.END_DELM, txt,
                                               file_path)
+        new_path = file_path + 'bak'
+        cmd = "awk '{\
+               if ($0==\"%s\") { \
+                    print $0; print \"%s\"; \
+                    while(getline>0){if ($0==\"%s\") break;} \
+                    print $0; next;} \
+                {print $0}}' %s > %s" %(self.START_DELM, txt, self.END_DELM,
+                                        file_path, new_path)
         local(cmd)
+        local('mv %s %s' %(new_path, file_path))
 
     def run(self, section=None, nginx_conf=None):
         assert section and nginx_conf

@@ -99,9 +99,16 @@ class FirewallUpdate(Task):
     def _save_to_file(self, section, text):
         file_path = self.get_section_path(section)
 
-        cmd = "sed -i '/%s/,/%s/ c %s' %s" % (self.START_DELM, self.END_DELM, text,
-                                                 file_path)
+        new_path = file_path + 'bak'
+        cmd = "awk '{\
+               if ($0==\"%s\") { \
+                    print $0; print \"%s\"; \
+                    while(getline>0){if ($0==\"%s\") break;} \
+                    print $0; next;} \
+                {print $0}}' %s > %s" %(self.START_DELM, text, self.END_DELM,
+                                        file_path, new_path)
         local(cmd)
+        local('mv %s %s' %(new_path, file_path))
         return file_path
 
     def run(self, section=None):
