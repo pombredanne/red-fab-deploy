@@ -1,6 +1,6 @@
 import os
 
-from fabric.api import local, env, execute, task, cd
+from fabric.api import local, env, execute, task, cd, run
 from fabric.decorators import runs_once
 
 @runs_once
@@ -35,5 +35,6 @@ def migrate():
     """
 
     project_dir = os.path.join(env.git_working_dir, 'project')
-    with cd(project_dir):
-        sudo('./manage.py migrate --all')
+    exe_path = os.path.join(env.git_working_dir, 'env/bin')
+
+    run('%s/python %s/manage.py migrate --all' %(exe_path, project_dir))
