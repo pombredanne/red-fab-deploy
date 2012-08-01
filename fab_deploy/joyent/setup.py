@@ -103,12 +103,16 @@ class LBSetup(BaseSetup):
         execute('git.setup', branch=self.git_branch, hook=self.git_hook)
         execute('local.git.push', branch=self.git_branch)
 
-    def run(self, name=None):
+    def _check_hosts(self):
         if env.host_string:
             self._update_config(self.config_section)
         else:
             print "env.host_string is None, please specify a host by -H "
             sys.exit()
+
+    def run(self, name=None):
+        self._check_hosts()
+
         self._add_remote(name=name)
 
         # Transfer files first so all configs are in place.
@@ -168,6 +172,22 @@ class AppSetup(LBSetup):
         execute('gunicorn.setup')
         run('svcadm enable gunicorn')
 
+class DBSetup(BaseSetup):
+    """
+    Setup a database server
+    """
+
+    name = 'db_server'
+    config_section = 'db-server'
+
+    def run(self):
+        self._check_hosts()
+        self._secure_ssh()
+        self._update_firewalls(self.config_section)
+        self._save_config()
+        execute('postgres.setup')
+
+
 class DevSetup(AppSetup):
     """
     Setup a development server
@@ -179,14 +199,11 @@ class DevSetup(AppSetup):
         sudo('pip install virtualenv')
         run('sh %s/scripts/setup.sh development' % env.git_working_dir)
 
-    def _install_packages(self):
-        sudo('pkg_add postgresql91-server')
-        super(DevSetup, self).__install_packages()
-
     def _setup_services(self):
         super(DevSetup, self)._setup_services()
-        run('svcadm enable postgresql')
+        execute('postgres.setup')
 
 app_server = AppSetup()
 lb_server = LBSetup()
 dev_server = DevSetup()
+db_server = DBSetup()

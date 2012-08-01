@@ -1,0 +1,85 @@
+import os
+import sys
+
+from fabric.api import run, sudo, env, local
+from fabric.contrib.files import append, sed, exists, contains
+from fabric.context_managers import prefix
+from fabric.tasks import Task
+
+class PostgresInstall(Task):
+    """
+    Install postgresql on server
+
+    install postgresql package;
+    enable postgres access from localhost without password;
+    enable all other user access from other machines with password;
+    database server listen to all machines '*';
+    create a user for database with password.
+    """
+
+    name = 'setup'
+
+    def run(self, db_version='9.1', encrypt='md5', data_dir=None, hosts=[]):
+
+        db_version = ''.join(db_version.split('.')[:2])
+        if not data_dir:
+            data_dir = os.path.join('/var/pgsql', 'data%s' %db_version)
+
+        self._install_package(db_version=db_version)
+
+        self._setup_hba_config(data_dir, encrypt=encrypt)
+        self._setup_postgres_config(data_dir)
+
+        self._restart_db_server()
+        self._create_user()
+
+    def _install_package(self, db_version=None):
+        pkg = 'postgresql%s-server' %db_version
+        sudo("pkg_add %s" %pkg)
+        sudo("svcadm enable postgresql:pg%s" %db_version)
+
+    def _setup_hba_config(self, data_dir=None, encrypt=None):
+        """ enable postgres access without password from localhost"""
+
+        hba_conf = os.path.join(data_dir, 'pg_hba.conf')
+        if exists(hba_conf, use_sudo=True):
+            new_line = "local   all      postgres     trust"
+            if not contains(hba_conf, new_line, use_sudo=True):
+                sudo('sed -i "/is for Unix domain socket connections only/a %s" %s'
+                     %(new_line, hba_conf))
+
+            new_line = "host    all      all     0.0.0.0/0    %s" %encrypt
+            if not contains(hba_conf, new_line, use_sudo=True):
+                append(hba_conf, new_line, use_sudo=True)
+        else:
+            print ('Could not find file %s. Please make sure postgresql was '
+                   'installed and data dir was created correctly.'%hba_conf)
+            sys.exit()
+
+    def _setup_postgres_config(self, data_dir=None):
+        """ enable password-protected access for all user from all remotes """
+        postgres_conf = os.path.join(data_dir, 'postgresql.conf')
+
+        if exists(postgres_conf, use_sudo=True):
+            from_str = "#listen_addresses = 'localhost'"
+            to_str = "listen_addresses = '*'"
+            sudo('sed -i "s/%s/%s/g" %s' %(from_str, to_str, postgres_conf))
+        else:
+            print ('Could not find file %s. Please make sure postgresql was '
+                   'installed and data dir was created correctly.' %postgres_conf)
+            sys.exit()
+
+    def _restart_db_server(self):
+        sudo('svcadm restart postgresql:pg91')
+
+    def _create_user(self):
+        username = raw_input("Nowe we are creating a database user, please "
+                             "specify a username: ")
+        # 'postgres' is postgresql superuser
+        while username == 'postgres':
+            username = raw_input("Sorry, you are not allowed to use postgres "
+                                 "as username, please choose another one: ")
+        run("sudo su postgres -c 'createuser -D -S -R -P %s'" %username)
+
+
+setup = PostgresInstall()
