@@ -18,20 +18,29 @@ class PostgresInstall(Task):
     """
 
     name = 'setup'
+    db_version = '9.1'
+    encrypt = 'md5'
 
-    def run(self, db_version='9.1', encrypt='md5', data_dir=None, hosts=[]):
+    def run(self, db_version=None, encrypt=None):
 
+        if not db_version:
+            db_version = self.db_version
         db_version = ''.join(db_version.split('.')[:2])
-        if not data_dir:
-            data_dir = os.path.join('/var/pgsql', 'data%s' %db_version)
+        data_dir = self._get_data_dir(db_version)
+
+        if not encrypt:
+            encrypt = self.encrypt
 
         self._install_package(db_version=db_version)
 
         self._setup_hba_config(data_dir, encrypt=encrypt)
         self._setup_postgres_config(data_dir)
 
-        self._restart_db_server()
+        self._restart_db_server(db_version)
         self._create_user()
+
+    def _get_data_dir(self, db_version):
+        return os.path.join('/var/pgsql', 'data%s' %db_version)
 
     def _install_package(self, db_version=None):
         pkg = 'postgresql%s-server' %db_version
@@ -69,8 +78,8 @@ class PostgresInstall(Task):
                    'installed and data dir was created correctly.' %postgres_conf)
             sys.exit()
 
-    def _restart_db_server(self):
-        sudo('svcadm restart postgresql:pg91')
+    def _restart_db_server(self, db_version):
+        sudo('svcadm restart postgresql:pg%s' %db_version)
 
     def _create_user(self):
         username = raw_input("Nowe we are creating a database user, please "
