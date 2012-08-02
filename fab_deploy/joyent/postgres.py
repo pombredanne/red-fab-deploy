@@ -20,6 +20,14 @@ class PostgresInstall(Task):
     name = 'setup'
     db_version = '9.1'
     encrypt = 'md5'
+    hba_txts = ('local   all    postgres                     trust\n'
+               'local   all    all                          password\n'
+               '# # IPv4 local connections:\n'
+               'host    all    all         127.0.0.1/32     md5\n'
+               '# # IPv6 local connections:\n'
+               'host    all    all         ::1/128          md5\n'
+               '# # IPv4 external\n'
+               'host    all    all         0.0.0.0/0        %s\n')
 
     def run(self, db_version=None, encrypt=None):
 
@@ -40,7 +48,7 @@ class PostgresInstall(Task):
         self._create_user()
 
     def _get_data_dir(self, db_version):
-        return os.path.join('/var/pgsql', 'data%s' %db_version)
+        return os.path.join('/var', 'pgsql', 'data%s' %db_version)
 
     def _install_package(self, db_version=None):
         pkg = 'postgresql%s-server' %db_version
@@ -51,15 +59,10 @@ class PostgresInstall(Task):
         """ enable postgres access without password from localhost"""
 
         hba_conf = os.path.join(data_dir, 'pg_hba.conf')
-        if exists(hba_conf, use_sudo=True):
-            new_line = "local   all      postgres     trust"
-            if not contains(hba_conf, new_line, use_sudo=True):
-                sudo('sed -i "/is for Unix domain socket connections only/a %s" %s'
-                     %(new_line, hba_conf))
+        hba_txts = self.hba_txts %encrypt
 
-            new_line = "host    all      all     0.0.0.0/0    %s" %encrypt
-            if not contains(hba_conf, new_line, use_sudo=True):
-                append(hba_conf, new_line, use_sudo=True)
+        if exists(hba_conf, use_sudo=True):
+            sudo("echo '%s' > %s" %(hba_txts, hba_conf))
         else:
             print ('Could not find file %s. Please make sure postgresql was '
                    'installed and data dir was created correctly.'%hba_conf)
