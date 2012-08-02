@@ -21,13 +21,13 @@ class PostgresInstall(Task):
     db_version = '9.1'
     encrypt = 'md5'
     hba_txts = ('local   all    postgres                     trust\n'
-               'local   all    all                          password\n'
-               '# # IPv4 local connections:\n'
-               'host    all    all         127.0.0.1/32     md5\n'
-               '# # IPv6 local connections:\n'
-               'host    all    all         ::1/128          md5\n'
-               '# # IPv4 external\n'
-               'host    all    all         0.0.0.0/0        %s\n')
+                'local   all    all                          password\n'
+                '# # IPv4 local connections:\n'
+                'host    all    all         127.0.0.1/32     md5\n'
+                '# # IPv6 local connections:\n'
+                'host    all    all         ::1/128          md5\n'
+                '# # IPv4 external\n'
+                'host    all    all         0.0.0.0/0        %s\n')
 
     def run(self, db_version=None, encrypt=None):
 
