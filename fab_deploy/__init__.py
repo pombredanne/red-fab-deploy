@@ -7,7 +7,7 @@ from functions import gather_remotes
 
 # Import all tasks
 import local
-from deploy import deploy
+from deploy import deploy, migrate
 
 GIT_REPO_NAME = 'project-git'
 GIT_WORKING_DIR = '/srv/active'

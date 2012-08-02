@@ -1,4 +1,6 @@
-from fabric.api import local, env, execute, task
+import os
+
+from fabric.api import local, env, execute, task, cd, run
 from fabric.decorators import runs_once
 
 @runs_once
@@ -25,3 +27,14 @@ def deploy(branch=None):
 
     pre_deploy(branch=branch)
     execute('local.deploy.do', branch=branch)
+
+@task(hosts=[])
+def migrate():
+    """
+    Database migration using south
+    """
+
+    manage_py = os.path.join(env.git_working_dir, 'project', 'manage.py')
+    python_exe = os.path.join(env.git_working_dir, 'env', 'bin', 'python')
+
+    run('%s %s migrate --all' %(python_exe, manage_py))
