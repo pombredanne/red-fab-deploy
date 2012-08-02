@@ -23,13 +23,13 @@ class PostgresInstall(Task):
     hba_txts = ('local   all    postgres                     trust\n'
                 'local   all    all                          password\n'
                 '# # IPv4 local connections:\n'
-                'host    all    all         127.0.0.1/32     md5\n'
+                'host    all    all         127.0.0.1/32     %(encrypt)s\n'
                 '# # IPv6 local connections:\n'
-                'host    all    all         ::1/128          md5\n'
+                'host    all    all         ::1/128          %(encrypt)s\n'
                 '# # IPv4 external\n'
-                'host    all    all         0.0.0.0/0        %s\n')
+                'host    all    all         0.0.0.0/0        %(encrypt)s\n')
 
-    def run(self, db_version=None, encrypt=None):
+    def run(self, db_version=None, encrypt=None, *args, **kwargs):
 
         if not db_version:
             db_version = self.db_version
@@ -40,8 +40,7 @@ class PostgresInstall(Task):
             encrypt = self.encrypt
 
         self._install_package(db_version=db_version)
-
-        self._setup_hba_config(data_dir, encrypt=encrypt)
+        self._setup_hba_config(data_dir, encrypt)
         self._setup_postgres_config(data_dir)
 
         self._restart_db_server(db_version)
@@ -59,7 +58,8 @@ class PostgresInstall(Task):
         """ enable postgres access without password from localhost"""
 
         hba_conf = os.path.join(data_dir, 'pg_hba.conf')
-        hba_txts = self.hba_txts %encrypt
+        kwargs = {'data_dir':data_dir, 'encrypt':encrypt}
+        hba_txts = self.hba_txts % kwargs
 
         if exists(hba_conf, use_sudo=True):
             sudo("echo '%s' > %s" %(hba_txts, hba_conf))
