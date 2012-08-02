@@ -34,7 +34,7 @@ def migrate():
     Database migration using south
     """
 
-    project_dir = os.path.join(env.git_working_dir, 'project')
-    exe_path = os.path.join(env.git_working_dir, 'env/bin')
+    manage_py = os.path.join(env.git_working_dir, 'project', 'manage.py')
+    python_exe = os.path.join(env.git_working_dir, 'env', 'bin', 'python')
 
-    run('%s/python %s/manage.py migrate --all' %(exe_path, project_dir))
+    run('%s %s migrate --all' %(python_exe, manage_py))
