@@ -41,6 +41,13 @@ class BaseSetup(Task):
     def _save_config(self):
         env.config_object.save(env.conf_filename)
 
+    def _check_hosts(self):
+        if env.host_string:
+            self._update_config(self.config_section)
+        else:
+            print "env.host_string is None, please specify a host by -H "
+            sys.exit()
+
     def _secure_ssh(self):
         # Change disable root and password
         # logins in /etc/ssh/sshd_config
@@ -103,12 +110,6 @@ class LBSetup(BaseSetup):
         execute('git.setup', branch=self.git_branch, hook=self.git_hook)
         execute('local.git.push', branch=self.git_branch)
 
-    def _check_hosts(self):
-        if env.host_string:
-            self._update_config(self.config_section)
-        else:
-            print "env.host_string is None, please specify a host by -H "
-            sys.exit()
 
     def run(self, name=None):
         self._check_hosts()
