@@ -200,7 +200,7 @@ class DevSetup(AppSetup):
 
     def _install_venv(self):
         sudo('pip install virtualenv')
-        run('sh %s/scripts/setup.sh development' % env.git_working_dir)
+        run('sh %s/scripts/setup.sh production development' % env.git_working_dir)
 
     def _setup_services(self):
         super(DevSetup, self)._setup_services()
