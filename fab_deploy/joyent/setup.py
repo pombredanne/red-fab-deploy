@@ -195,6 +195,9 @@ class DevSetup(AppSetup):
     name = 'dev_server'
     config_section = 'dev-server'
 
+    def _modify_others(self):
+        pass
+
     def _install_venv(self):
         sudo('pip install virtualenv')
         run('sh %s/scripts/setup.sh development' % env.git_working_dir)
