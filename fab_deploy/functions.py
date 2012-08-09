@@ -40,7 +40,8 @@ def gather_remotes():
     return remotes
 
 def get_remote_name(host, prefix, name=None):
-    assert host and prefix
+    assert prefix
+
     if not host in env.git_reverse:
         count = len(env.git_reverse)
 

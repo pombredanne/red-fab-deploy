@@ -84,8 +84,10 @@ class New(Task):
         key_id = '/%s/keys/%s' % ( env.joyent_account, key_name)
         sdc = DataCenter(location=location, key_id=key_id)
 
+        name = functions.get_remote_name(None, task.config_section,
+                                         name=kwargs.get('name'))
         new_args = {
-            'name' : kwargs.get('name'),
+            'name' : name,
             'dataset' : kwargs.get('data_set', default_dataset),
             'metadata' : kwargs.get('metadata', {}),
             'tags' : kwargs.get('tags', {}),
@@ -104,6 +106,6 @@ class New(Task):
             time.sleep(5)
         print 'done'
 
-        execute(setup_name, name=kwargs.get('name'), hosts=[host_string])
+        execute(setup_name, name=name, hosts=[host_string])
 
 add_server = New()
