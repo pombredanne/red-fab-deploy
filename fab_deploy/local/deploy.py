@@ -69,8 +69,6 @@ class PrepDeploy(Task):
         local('git checkout %s' % branch)
 
     def _prep_static(self):
-        local('rake dev:compass')
-        local('rake dev:uglify')
         local('%s/env/bin/python %s/project/manage.py collectstatic --noinput' % (env.project_path, env.project_path))
 
     def _restore_working_dir(self):
