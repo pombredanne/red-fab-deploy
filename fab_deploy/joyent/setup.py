@@ -160,6 +160,7 @@ class AppSetup(LBSetup):
         sudo('pkg_add python27')
         sudo('pkg_add py27-psycopg2')
         sudo('pkg_add py27-setuptools')
+        sudo('pkg_add py27-imaging')
         sudo('easy_install-2.7 pip')
         self._install_venv()
 
