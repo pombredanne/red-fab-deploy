@@ -293,6 +293,7 @@ class ReplicationSetup(BaseSetup):
 
         # execute('postgres.setup',db_version=db_version) #this or next one?
         sudo("pkg_add postgresql%s-server" %data_dir)
+        sudo("pkg_add postgresql%s-replicationtools" %data_dir)
         sudo('svcadm enable postgresql:pg%s' %db_version) #initilize
         sudo('svcadm disable postgresql:pg%s' %db_version)
 
