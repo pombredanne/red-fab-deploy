@@ -188,8 +188,17 @@ class DBSetup(BaseSetup):
         self._check_hosts()
         self._secure_ssh()
         self._update_firewalls(self.config_section)
+        username = execute('postgres.master_setup')
+        self._update_config_username(username)
         self._save_config()
-        execute('postgres.master_setup')
+
+    def _update_config_username(self, username):
+        # add username into server.ini
+        names = env.config_object.get_list(self.config_section,
+                                           env.config_object.USERNAME)
+        names.append(username)
+        env.config_object.set_list(self.config_section,
+                                   env.config_object.USERNAME, names)
 
 class DevSetup(AppSetup):
     """

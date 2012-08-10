@@ -1,6 +1,5 @@
 import os
 import sys
-from uuid import uuid4
 
 from fabric.api import run, sudo, env, local, hide, settings
 from fabric.contrib.files import append, sed, exists, contains
@@ -9,6 +8,8 @@ from fabric.operations import get, put
 from fabric.context_managers import cd
 
 from fabric.tasks import Task
+
+from utils import random_password
 
 class PostgresInstall(Task):
     """
@@ -100,6 +101,8 @@ class PostgresInstall(Task):
                                  "as username, please choose another one: ")
         run("sudo su postgres -c 'createuser -D -S -R -P %s'" %username)
 
+        return username
+
     def run(self, db_version=None, encrypt=None, *args, **kwargs):
         if not db_version:
             db_version = self.db_version
@@ -119,7 +122,10 @@ class PostgresInstall(Task):
                                     config=self.postgres_config)
 
         self._restart_db_server(db_version)
-        self._create_user()
+
+        username = self._create_user()
+
+        return username
 
 
 class ReplicationSetup(PostgresInstall):
@@ -206,7 +212,7 @@ class ReplicationSetup(PostgresInstall):
         data_dir = self._get_data_dir(db_version)
         slave = env.host_string
         slave_ip = slave.split('@')[1]
-        replicator_pass = uuid4().hex
+        replicator_pass = random_password(12)
 
         self._install_package(db_version=db_version)
         sudo('svcadm disable postgresql:pg%s' %db_version)
