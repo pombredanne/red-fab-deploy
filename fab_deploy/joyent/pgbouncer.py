@@ -25,7 +25,7 @@ class PGBouncerInstall(Task):
         'listen_port':    '6432',
         'unix_socket_dir': '/tmp',
         'auth_type':      'md5',
-        'auth_file':      '%s/userlist.txt' %config_dir,
+        'auth_file':      '%s/pgbouncer.userlist' %config_dir,
         'pool_mode':      'session',
         'admin_users':    'postgres',
         'stats_users':    'postgres',
@@ -55,7 +55,7 @@ class PGBouncerInstall(Task):
         out = open('/tmp/userlist.txt', 'w')
         out.write("".join(lines))
         out.close()
-        put('/tmp/userlist.txt', '%s/userlist.txt' %self.config_dir, use_sudo=True)
+        put('/tmp/userlist.txt', '%s/pgbouncer.userlist' %self.config_dir, use_sudo=True)
         local('rm /tmp/userlist.txt')
 
     def run(self):
@@ -67,7 +67,7 @@ class PGBouncerInstall(Task):
 
         with cd('/tmp'):
             run('wget %s' %self.pgbouncer_src)
-            # sudo('pkg_add %s' %self.pkg_name)
+            sudo('pkg_add %s' %self.pkg_name)
 
         svc_method = os.path.join(env.configs_dir, 'pgbouncer.xml')
         put(svc_method, self.config_dir, use_sudo=True)
