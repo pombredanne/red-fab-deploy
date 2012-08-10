@@ -180,7 +180,6 @@ class DBSetup(BaseSetup):
     """
     Setup a database server
     """
-
     name = 'db_server'
     config_section = 'db-server'
 
@@ -199,6 +198,35 @@ class DBSetup(BaseSetup):
         names.append(username)
         env.config_object.set_list(self.config_section,
                                    env.config_object.USERNAME, names)
+
+class SlaveSetup(DBSetup):
+    """
+    Set up a slave database server with streaming replication
+    """
+    name = 'slave_db'
+    config_section = 'slave-db'
+
+    def _get_master(self):
+        cons = env.config_object.get_list('db-server',
+                                          env.config_object.CONNECTIONS)
+        if len(cons) > 1:
+            print ('Sorry, there are two db-servers in server.ini, and I don\'t'
+                   'know how to setup two master servers')
+            sys.exit()
+        elif len(cons) < 1:
+            print ('I could not find db server in server.ini.'
+                   'Did you set up a master server?')
+            sys.exit()
+        else:
+            master = cons[0]
+
+    def run(self):
+        master = self._get_master()
+        self._check_hosts()
+        self._secure_ssh()
+        self._update_firewalls(self.config_section)
+        execute('postgres.slave_setup', master=master)
+        self._save_config()
 
 class DevSetup(AppSetup):
     """
@@ -222,3 +250,4 @@ app_server = AppSetup()
 lb_server = LBSetup()
 dev_server = DevSetup()
 db_server = DBSetup()
+slave_db = SlaveSetup()

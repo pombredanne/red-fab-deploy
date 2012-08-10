@@ -193,21 +193,9 @@ class ReplicationSetup(PostgresInstall):
                 run('sudo su postgres -c "echo %s >> %s"'
                     %(pub_key, authorized_keys))
 
-    def run(self, encrypt=None, *args, **kwargs):
-        cons = env.config_object.get_list('db-server',
-                                          env.config_object.CONNECTIONS)
-        if len(cons) > 1:
-            print ('Sorry, there are two db-servers in server.ini, and I don\'t'
-                   'know how to setup two master servers')
-            sys.exit()
-        elif len(cons) < 1:
-            print ('I could not find db server in server.ini.'
-                   'Did you set up a master server?')
-            sys.exit()
-        else:
-            master = cons[0]
-            master_ip = master.split('@')[1]
+    def run(self, master=None, encrypt=None, *args, **kwargs):
 
+        master_ip = master.split('@')[1]
         db_version = self._get_master_db_version(master=master)
         data_dir = self._get_data_dir(db_version)
         slave = env.host_string
