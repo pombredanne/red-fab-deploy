@@ -194,8 +194,11 @@ class ReplicationSetup(PostgresInstall):
                     %(pub_key, authorized_keys))
 
     def run(self, master=None, encrypt=None, *args, **kwargs):
+        if not master:
+            print "Hey, a master is required for slave."
+            sys.exit()
 
-        master_ip = master.split('@')[1]
+        master_ip = master.split('@')[-1]
         db_version = self._get_master_db_version(master=master)
         data_dir = self._get_data_dir(db_version)
         slave = env.host_string

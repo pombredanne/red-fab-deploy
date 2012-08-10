@@ -209,16 +209,27 @@ class SlaveSetup(DBSetup):
     def _get_master(self):
         cons = env.config_object.get_list('db-server',
                                           env.config_object.CONNECTIONS)
-        if len(cons) > 1:
-            print ('Sorry, there are two db-servers in server.ini, and I don\'t'
-                   'know how to setup two master servers')
-            sys.exit()
-        elif len(cons) < 1:
+        n = len(cons)
+        if n == 1:
+            master = cons[0]
+        elif n == 0:
             print ('I could not find db server in server.ini.'
                    'Did you set up a master server?')
             sys.exit()
         else:
-            master = cons[0]
+            for i in range(1, n+1):
+                print "[%2d ]: %s" %(i, cons[i-1])
+            while True:
+                choice = raw_input('I found %d servers in server.ini.'
+                                   'Which one do you want to use as master? ' %n)
+                try:
+                    choice = int(choice)
+                    master = cons[choice-1]
+                    break
+                except:
+                    print "please input a number between 1 and %d" %n-1
+
+        return master
 
     def run(self):
         master = self._get_master()
