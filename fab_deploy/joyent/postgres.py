@@ -26,7 +26,7 @@ class PostgresInstall(Task):
     db_version = '9.1'
 
     encrypt = 'md5'
-    hba_txts = ('local   all    postgres                     trust\n'
+    hba_txts = ('local   all    postgres                     ident\n'
                 'local   all    all                          password\n'
                 '# # IPv4 local connections:\n'
                 'host    all    all         127.0.0.1/32     %(encrypt)s\n'
@@ -216,15 +216,15 @@ class ReplicationSetup(PostgresInstall):
         with settings(host_string=master):
             c1 = ('CREATE USER replicator REPLICATION LOGIN ENCRYPTED '
                   'PASSWORD \'%s\';' %replicator_pass)
-            run('psql -U postgres -c "%s"' %c1)
+            run('sudo su postgres -c "%s"' %c1)
 
             hba_txt = 'host\treplication\treplicator\t%s/32\tmd5' %slave_ip
             self._modify_hba_config(data_dir=data_dir, hba_txt=hba_txt)
 
-            run('psql -U postgres -c "SELECT pg_start_backup(\'backup\', true)"')
-            run('sudo su - postgres -c "rsync -av --exclude postmaster.pid '
+            run('sudo su postgres -c "SELECT pg_start_backup(\'backup\', true)"')
+            run('sudo su postgres -c "rsync -av --exclude postmaster.pid '
                 '--exclude pg_xlog %s/ postgres@%s:%s/"'%(data_dir, slave_ip, data_dir))
-            run('psql -U postgres -c "SELECT pg_stop_backup()"')
+            run('sudo su postgres -c "SELECT pg_stop_backup()"')
 
         self._setup_postgres_config(data_dir=data_dir,
                                     config=self.postgres_config)
