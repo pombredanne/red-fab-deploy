@@ -11,6 +11,7 @@ class CustomConfig(ConfigParser.ConfigParser):
     OPEN_PORTS = 'open-ports'
     RESTRICTED_PORTS = 'restricted-ports'
     ALLOWED_SECTIONS = 'allowed-sections'
+    USERNAME = 'username'
     GIT_SYNC = 'git-sync'
 
     def get_list(self, section, key):

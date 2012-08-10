@@ -1,5 +1,6 @@
-import os
+import os, sys
 from time import sleep
+import tempfile
 from cStringIO import StringIO
 from fabric.api import run, sudo, env, hide, local
 from fabric.context_managers import cd
@@ -37,28 +38,38 @@ class PGBouncerInstall(Task):
             new = "%s = %s" %(key, value)
             sudo('sed -i "/%s/ c\%s" %s' %(origin, new, file))
 
-    def _get_all_passwd(self):
+    def _get_passwd(self, username):
         with hide('output'):
             string = run('sudo su postgres -c \'psql -c "select usename, '
-                         'passwd from pg_shadow order by 1"\'')
-        f = StringIO(string)
-        f.readline()
-        f.readline()
-        lines = []
-        for line in f.readlines():
-            list = line.split('|')
-            if len(list) >= 2:
-                user = list[0].strip()
-                passwd = list[1].strip()
-                lines.append('"%s" "%s" ""\n' %(user, passwd))
+                         'passwd from pg_shadow where usename=\"%s\"' %username
+                         'order by 1"\'')
+
+        user, passwd = string.split('\n')[2].split('|')
+        user = list[0].strip()
+        passwd = list[1].strip()
 
         out = open('/tmp/userlist.txt', 'w')
-        out.write("".join(lines))
-        out.close()
-        put('/tmp/userlist.txt', '%s/pgbouncer.userlist' %self.config_dir, use_sudo=True)
-        local('rm /tmp/userlist.txt')
+        __, tmp_name = tempfile.mkstemp()
+        fn = open(tmp_name, 'w')
+        fn.write('"%s" "%s" ""\n' %(user, passwd))
+        fn.close()
+        put(fn, '%s/pgbouncer.userlist'%self.config_dir, use_sudo=True)
+        local('rm %s' tmp_name)
 
-    def run(self):
+    def _get_username(self, section=None):
+        cons = env.config_object.get_list(section, env.config_object.CONNECTIONS)
+        names = env.config_object.get_list(section, env.config_object.USERNAME)
+        try:
+            i = cons.index(env.host_string)
+            username = names[i]
+        except:
+            print ('You must first set up a database server on this machine, '
+                   'and create a database user')
+            raise
+        return username
+
+    def run(self, section):
+
         sudo('pkg_add libevent')
         sudo('pkg_add py27-psycopg2')
         sudo('mkdir -p /opt/pkg/bin')
@@ -73,7 +84,11 @@ class PGBouncerInstall(Task):
         put(svc_method, self.config_dir, use_sudo=True)
 
         self._setup_parameter('%s/pgbouncer.ini' %self.config_dir, **self.config)
-        self._get_all_passwd()
+
+        if not section:
+            section = 'db-server'
+        username = self._get_username(section)
+        self._get_passwd(username)
         # postgres should be the owner of these config files
         sudo('chown -R postgres:postgres %s' %self.config_dir)
 
