@@ -32,7 +32,7 @@
       <exec_method
         type="method"
         name="start"
-        exec="/opt/pkg/bin/pgbouncer -d /etc/pgbouncer/pgbouncer.ini"
+        exec="/opt/pkg/bin/pgbouncer -d /etc/opt/pkg/pgbouncer.ini"
         timeout_seconds="60" />
 
       <exec_method
