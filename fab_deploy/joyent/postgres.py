@@ -164,7 +164,6 @@ class PostgresInstall(Task):
         self._create_replicator(db_version)
 
         if save_config:
-            print env.conf_filename
             env.config_object.save(env.conf_filename)
 
 
