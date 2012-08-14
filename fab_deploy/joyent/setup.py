@@ -193,9 +193,9 @@ class DBSetup(BaseSetup):
 
     def _update_config_username(self, dict):
         # update config info in server.ini
-        username = [dict['username']]
-        replicator = [dict['replicator']]
-        rep_pass = [dict['replicator password']]
+        username = [dict.get('username')]
+        replicator = [dict.get('replicator', 'replicator')]
+        rep_pass = [dict.get('replicator password')]
         env.config_object.set_list(self.config_section,
                                    env.config_object.USERNAME, username)
         env.config_object.set_list(self.config_section,
