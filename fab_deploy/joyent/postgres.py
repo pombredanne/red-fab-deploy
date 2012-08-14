@@ -2,6 +2,7 @@ import os
 import sys
 import sgmllib
 import urllib2
+import tempfile
 
 from fabric.api import run, sudo, env, local, hide
 from fabric.contrib.files import append, sed, exists, contains
@@ -130,20 +131,19 @@ class PGBouncerInstall(Task):
 
     def _get_passwd(self, username):
         with hide('output'):
-            string = run('sudo su postgres -c \'psql -c "select usename, '
-                         'passwd from pg_shadow where usename=\"%s\"'
-                         'order by 1"\'' %username)
+            string = run('echo "select usename, passwd from pg_shadow where '
+                         'usename=\'%s\' order by 1" | sudo su postgres -c '
+                         '"psql"' %username)
 
         user, passwd = string.split('\n')[2].split('|')
-        user = list[0].strip()
-        passwd = list[1].strip()
+        user = user.strip()
+        passwd = passwd.strip()
 
-        out = open('/tmp/userlist.txt', 'w')
         __, tmp_name = tempfile.mkstemp()
         fn = open(tmp_name, 'w')
         fn.write('"%s" "%s" ""\n' %(user, passwd))
         fn.close()
-        put(fn, '%s/pgbouncer.userlist'%self.config_dir, use_sudo=True)
+        put(tmp_name, '%s/pgbouncer.userlist'%self.config_dir, use_sudo=True)
         local('rm %s' %tmp_name)
 
     def _get_username(self, section=None):
@@ -156,10 +156,9 @@ class PGBouncerInstall(Task):
             raise
         return username
 
-    def run(self, section):
+    def run(self, section=None):
 
         sudo('pkg_add libevent')
-        sudo('pkg_add py27-psycopg2')
         sudo('mkdir -p /opt/pkg/bin')
         sudo("ln -sf /opt/local/bin/awk /opt/pkg/bin/nawk")
         sudo("ln -sf /opt/local/bin/sed /opt/pkg/bin/nbsed")
