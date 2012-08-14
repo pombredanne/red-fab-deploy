@@ -89,6 +89,15 @@ class PostgresInstall(Task):
 
         return archive_dir
 
+    def _setup_ssh_key(self):
+        ssh_dir = '/var/pgsql/.ssh'
+
+        sudo('mkdir -p %s' %ssh_dir)
+        sudo('chown -R postgres:postgres %s' %ssh_dir)
+        sudo('chmod -R og-rwx %s' %ssh_dir)
+        rsa = os.path.join(ssh_dir, 'id_rsa')
+        run('sudo su postgres -c "ssh-keygen -t rsa -f %s -N \'\'"' %rsa)
+
     def _restart_db_server(self, db_version):
         sudo('svcadm restart postgresql:pg%s' %db_version)
 
@@ -101,13 +110,26 @@ class PostgresInstall(Task):
                                  "as username, please choose another one: ")
         run("sudo su postgres -c 'createuser -D -S -R -P %s'" %username)
 
-        return username
+        return {'username': username}
+
+    def _create_replicator(self, db_version):
+        replicator_pass = random_password(12)
+
+        c1 = ('CREATE USER replicator REPLICATION LOGIN ENCRYPTED '
+              'PASSWORD \"\'%s\'\"' %replicator_pass)
+        run("echo %s | sudo su postgres -c \'psql\'" %c1)
+        log_file = os.path.join('/var/log', 'postgresql%s.log' %db_version)
+        sudo("sed -i '/replicator/d' %s" %log_file)
+
+        return {'replicator': 'replicator',
+                'replicator password': replicator_pass}
 
     def run(self, db_version=None, encrypt=None, *args, **kwargs):
         if not db_version:
             db_version = self.db_version
         db_version = ''.join(db_version.split('.')[:2])
         data_dir = self._get_data_dir(db_version)
+        hba_conf= os.path.join(data_dir, 'pg_hba.conf')
 
         if not encrypt:
             encrypt = self.encrypt
@@ -120,15 +142,17 @@ class PostgresInstall(Task):
         self._setup_hba_config(data_dir, encrypt)
         self._setup_postgres_config(data_dir=data_dir,
                                     config=self.postgres_config)
-
+        self._setup_ssh_key()
+        user = self._create_user()
+        replicator = self._create_replicator(db_version)
         self._restart_db_server(db_version)
 
-        username = self._create_user()
 
-        return username
+        user.update(replicator)
+        return user
 
 
-class ReplicationSetup(PostgresInstall):
+class SlaveSetup(PostgresInstall):
     """
     Set up master-slave streaming replication: slave node
     """
@@ -147,6 +171,11 @@ class ReplicationSetup(PostgresInstall):
 
         return version
 
+    def _get_replicator(self, section='db-server'):
+        password = env.config_object.get_list(section,
+                                             env.config_object.REPLICATOR_PASS)
+        return password[0]
+
     def _setup_recovery_conf(self, master_ip, password, data_dir):
         wal_dir = os.path.join(data_dir, 'wal_archive')
         recovery_conf = os.path.join(data_dir, 'recovery.conf')
@@ -160,7 +189,6 @@ class ReplicationSetup(PostgresInstall):
                 ("archive_cleanup_command = 'pg_archivecleanup %s %s'\n"
                     %(wal_dir, "%r")))
 
-        sudo('rm %s' %recovery_conf)
         sudo('touch %s' %recovery_conf)
         append(recovery_conf, txts, use_sudo=True)
         sudo('chown postgres:postgres %s' %recovery_conf)
@@ -171,19 +199,13 @@ class ReplicationSetup(PostgresInstall):
 
     def _ssh_key_exchange(self, master, slave):
         """
-        set up ssh key, so that master can access slave without password via ssh
+        copy ssh key(pub) from master to slave, so that master can access slave
+        without password via ssh
         """
         ssh_dir = '/var/pgsql/.ssh'
-        for host in [master, slave]:
-            with settings(host_string=host):
-                sudo('mkdir -p %s' %ssh_dir)
-                sudo('chown -R postgres:postgres %s' %ssh_dir)
-                sudo('chmod -R og-rwx %s' %ssh_dir)
 
         with settings(host_string=master):
-            rsa = os.path.join(ssh_dir, 'id_rsa')
             rsa_pub = os.path.join(ssh_dir, 'id_rsa.pub')
-            run('sudo su postgres -c "ssh-keygen -t rsa -f %s -N \'\'"' %rsa)
             with hide('output'):
                 pub_key = sudo('cat %s' %rsa_pub)
 
@@ -203,29 +225,28 @@ class ReplicationSetup(PostgresInstall):
         data_dir = self._get_data_dir(db_version)
         slave = env.host_string
         slave_ip = slave.split('@')[1]
-        replicator_pass = random_password(12)
+        hba_conf= os.path.join(data_dir, 'pg_hba.conf')
 
         self._install_package(db_version=db_version)
         sudo('svcadm disable postgresql:pg%s' %db_version)
 
+        self._setup_ssh_key()
         self._ssh_key_exchange(master, slave)
 
         with settings(host_string=master):
-            c1 = ('CREATE USER replicator REPLICATION LOGIN ENCRYPTED '
-                  'PASSWORD \'%s\';' %replicator_pass)
-            run('sudo su postgres -c "%s"' %c1)
-
             hba_txt = 'host\treplication\treplicator\t%s/32\tmd5' %slave_ip
-            self._modify_hba_config(data_dir=data_dir, hba_txt=hba_txt)
+            sudo("echo %s >>%s" %(hba_txt, hba_conf))
 
-            run('sudo su postgres -c "SELECT pg_start_backup(\'backup\', true)"')
+            run('echo "SELECT pg_start_backup(\'backup\', true)" | sudo su postgres -c \'psql\'')
             run('sudo su postgres -c "rsync -av --exclude postmaster.pid '
                 '--exclude pg_xlog %s/ postgres@%s:%s/"'%(data_dir, slave_ip, data_dir))
-            run('sudo su postgres -c "SELECT pg_stop_backup()"')
+            run('echo "SELECT pg_stop_backup()" | sudo su postgres -c \'psql\'')
 
         self._setup_postgres_config(data_dir=data_dir,
                                     config=self.postgres_config)
         self._setup_archive_dir(data_dir)
+
+        replicator_pass = self._get_replicator()
         self._setup_recovery_conf(master_ip=master_ip,
                                   password=replicator_pass, data_dir=data_dir)
 
@@ -241,4 +262,4 @@ class ReplicationSetup(PostgresInstall):
         print('password for replicator on master node is %s' %replicator_pass)
 
 master_setup = PostgresInstall()
-slave_setup = ReplicationSetup()
+slave_setup = SlaveSetup()

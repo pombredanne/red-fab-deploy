@@ -183,21 +183,25 @@ class DBSetup(BaseSetup):
     name = 'db_server'
     config_section = 'db-server'
 
-    def run(self):
+    def run(self, name=None):
         self._check_hosts()
         self._secure_ssh()
         self._update_firewalls(self.config_section)
-        username = execute('postgres.master_setup')
-        self._update_config_username(username)
+        dict = execute('postgres.master_setup')
+        self._update_config_username(dict[env.host_string])
         self._save_config()
 
-    def _update_config_username(self, username):
-        # add username into server.ini
-        names = env.config_object.get_list(self.config_section,
-                                           env.config_object.USERNAME)
-        names.append(username)
+    def _update_config_username(self, dict):
+        # update config info in server.ini
+        username = [dict['username']]
+        replicator = [dict['replicator']]
+        rep_pass = [dict['replicator password']]
         env.config_object.set_list(self.config_section,
-                                   env.config_object.USERNAME, names)
+                                   env.config_object.USERNAME, username)
+        env.config_object.set_list(self.config_section,
+                                   env.config_object.REPLICATOR, replicator)
+        env.config_object.set_list(self.config_section,
+                                   env.config_object.REPLICATOR_PASS, rep_pass)
 
 class SlaveSetup(DBSetup):
     """
@@ -210,9 +214,7 @@ class SlaveSetup(DBSetup):
         cons = env.config_object.get_list('db-server',
                                           env.config_object.CONNECTIONS)
         n = len(cons)
-        if n == 1:
-            master = cons[0]
-        elif n == 0:
+        if n == 0:
             print ('I could not find db server in server.ini.'
                    'Did you set up a master server?')
             sys.exit()
@@ -231,7 +233,7 @@ class SlaveSetup(DBSetup):
 
         return master
 
-    def run(self):
+    def run(self, name=None):
         master = self._get_master()
         self._check_hosts()
         self._secure_ssh()

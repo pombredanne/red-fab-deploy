@@ -12,6 +12,8 @@ class CustomConfig(ConfigParser.ConfigParser):
     RESTRICTED_PORTS = 'restricted-ports'
     ALLOWED_SECTIONS = 'allowed-sections'
     USERNAME = 'username'
+    REPLICATOR = 'replicator'
+    REPLICATOR_PASS = 'replicator-password'
     GIT_SYNC = 'git-sync'
 
     def get_list(self, section, key):
