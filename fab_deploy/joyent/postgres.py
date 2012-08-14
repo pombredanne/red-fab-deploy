@@ -147,11 +147,9 @@ class PGBouncerInstall(Task):
         local('rm %s' %tmp_name)
 
     def _get_username(self, section=None):
-        cons = env.config_object.get_list(section, env.config_object.CONNECTIONS)
-        names = env.config_object.get_list(section, env.config_object.USERNAME)
         try:
-            i = cons.index(env.host_string)
-            username = names[i]
+            names = env.config_object.get_list(section, env.config_object.USERNAME)
+            username = names[0]
         except:
             print ('You must first set up a database server on this machine, '
                    'and create a database user')
