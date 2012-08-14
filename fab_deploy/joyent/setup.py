@@ -1,6 +1,9 @@
-import sys
-from fabric.api import task, run, sudo, execute, env
+import sys, os
+from fabric.api import task, run, sudo, execute, env, local, settings
 from fabric.tasks import Task
+from fabric.contrib.files import append, sed, exists, contains
+from fabric.operations import get, put
+from fabric.context_managers import cd
 
 from fab_deploy import functions
 
@@ -21,6 +24,9 @@ class BaseSetup(Task):
     serial = True
 
     def _update_config(self, config_section):
+        if not env.host_string:
+            print "env.host_string is None, please specify a host by -H "
+            sys.exit()
         added = False
         cons = env.config_object.get_list(config_section, env.config_object.CONNECTIONS)
         if not env.host_string in cons:
@@ -40,13 +46,6 @@ class BaseSetup(Task):
 
     def _save_config(self):
         env.config_object.save(env.conf_filename)
-
-    def _check_hosts(self):
-        if env.host_string:
-            self._update_config(self.config_section)
-        else:
-            print "env.host_string is None, please specify a host by -H "
-            sys.exit()
 
     def _secure_ssh(self):
         # Change disable root and password
@@ -112,7 +111,7 @@ class LBSetup(BaseSetup):
 
 
     def run(self, name=None):
-        self._check_hosts()
+        self._update_config()
 
         self._add_remote(name=name)
 
@@ -178,17 +177,53 @@ class DBSetup(BaseSetup):
     """
     Setup a database server
     """
-
     name = 'db_server'
     config_section = 'db-server'
 
-    def run(self):
-        self._check_hosts()
+    def run(self, name=None):
+        self._update_config()
         self._secure_ssh()
         self._update_firewalls(self.config_section)
+        dict = execute('postgres.master_setup', save_config=False)
         self._save_config()
-        execute('postgres.setup')
 
+class SlaveSetup(DBSetup):
+    """
+    Set up a slave database server with streaming replication
+    """
+    name = 'slave_db'
+    config_section = 'slave-db'
+
+    def _get_master(self):
+        cons = env.config_object.get_list('db-server',
+                                          env.config_object.CONNECTIONS)
+        n = len(cons)
+        if n == 0:
+            print ('I could not find db server in server.ini.'
+                   'Did you set up a master server?')
+            sys.exit()
+        else:
+            for i in range(1, n+1):
+                print "[%2d ]: %s" %(i, cons[i-1])
+            while True:
+                choice = raw_input('I found %d servers in server.ini.'
+                                   'Which one do you want to use as master? ' %n)
+                try:
+                    choice = int(choice)
+                    master = cons[choice-1]
+                    break
+                except:
+                    print "please input a number between 1 and %d" %n-1
+
+        return master
+
+    def run(self, name=None):
+        master = self._get_master()
+        self._update_config()
+        self._secure_ssh()
+        self._update_firewalls(self.config_section)
+        execute('postgres.slave_setup', master=master)
+        self._save_config()
 
 class DevSetup(AppSetup):
     """
@@ -206,9 +241,10 @@ class DevSetup(AppSetup):
 
     def _setup_services(self):
         super(DevSetup, self)._setup_services()
-        execute('postgres.setup')
+        execute('postgres.master_setup')
 
 app_server = AppSetup()
 lb_server = LBSetup()
 dev_server = DevSetup()
 db_server = DBSetup()
+slave_db = SlaveSetup()
