@@ -18,7 +18,6 @@ def random_password(bit=12):
     numbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     small_letters = [chr(i) for i in range(97, 123)]
     cap_letters = [chr(i) for i in range(65, 91)]
-    # special = [chr(i) for i in range(33, 48) + range(58, 65) + range(91, 97) + range(123, 127)]
     special = ['@', '#', '$', '%', '^', '&', '*', '-']
 
     passwd = []
