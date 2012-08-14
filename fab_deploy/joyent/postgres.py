@@ -28,6 +28,7 @@ class PostgresInstall(Task):
 
     encrypt = 'md5'
     hba_txts = ('local   all    postgres                     ident\n'
+                'host    replication replicator  0.0.0.0/0   md5\n'
                 'local   all    all                          password\n'
                 '# # IPv4 local connections:\n'
                 'host    all    all         127.0.0.1/32     %(encrypt)s\n'
@@ -115,7 +116,9 @@ class PostgresInstall(Task):
         else:
             run("sudo su postgres -c 'createuser -D -S -R -P %s'" %username)
 
-        return {'username': username}
+        env.config_object.set('db-server', env.config_object.USERNAME, username)
+
+        return username
 
     def _create_replicator(self, db_version):
         db_out = run("echo '\du replicator' | sudo su postgres -c 'psql'")
@@ -125,16 +128,19 @@ class PostgresInstall(Task):
             c1 = ('CREATE USER replicator REPLICATION LOGIN ENCRYPTED '
                   'PASSWORD \"\'%s\'\"' %replicator_pass)
             run("echo %s | sudo su postgres -c \'psql\'" %c1)
-            log_file = os.path.join('/var/log', 'postgresql%s.log' %db_version)
-            sudo("sed -i '/replicator/d' %s" %log_file)
+            history_file = os.path.join('/var', 'pgsql', '.psql_history')
+            if exists(history_file):
+                sudo('rm %s' %history_file)
             print "user replicator already exists, skipping creating user."
 
-            return {'replicator': 'replicator',
-                    'replicator password': replicator_pass}
-        else:
-            return {'replicator': 'replicator'}
+            env.config_object.set('db-server', env.config_object.REPLICATOR,
+                                  'replicator')
+            env.config_object.set('db-server', env.config_object.REPLICATOR_PASS,
+                                  replicator_pass)
 
-    def run(self, db_version=None, encrypt=None, *args, **kwargs):
+            return replicator_pass
+
+    def run(self, db_version=None, encrypt=None, save_config=True, **kwargs):
         if not db_version:
             db_version = self.db_version
         db_version = ''.join(db_version.split('.')[:2])
@@ -154,12 +160,12 @@ class PostgresInstall(Task):
                                     config=self.postgres_config)
         self._restart_db_server(db_version)
         self._setup_ssh_key()
-        user = self._create_user()
-        replicator = self._create_replicator(db_version)
+        self._create_user()
+        self._create_replicator(db_version)
 
-
-        user.update(replicator)
-        return user
+        if save_config:
+            print env.conf_filename
+            env.config_object.save(env.conf_filename)
 
 
 class SlaveSetup(PostgresInstall):
@@ -203,12 +209,6 @@ class SlaveSetup(PostgresInstall):
         append(recovery_conf, txts, use_sudo=True)
         sudo('chown postgres:postgres %s' %recovery_conf)
 
-    def _modify_hba_config(self, data_dir, hba_txt):
-        hba_conf= os.path.join(data_dir, 'pg_hba.conf')
-        sudo('echo %s > /tmp/pg_hba.conf' %hba_txt)
-        sudo('cat %s >>/tmp/pg_hba.conf' %hba_conf)
-        sudo('mv /tmp/pg_hba.conf %s' %hba_conf)
-
     def _ssh_key_exchange(self, master, slave):
         """
         copy ssh key(pub) from master to slave, so that master can access slave
@@ -227,7 +227,7 @@ class SlaveSetup(PostgresInstall):
                 run('sudo su postgres -c "echo %s >> %s"'
                     %(pub_key, authorized_keys))
 
-    def run(self, master=None, encrypt=None, *args, **kwargs):
+    def run(self, master=None, encrypt=None, **kwargs):
         if not master:
             print "Hey, a master is required for slave."
             sys.exit()
@@ -246,8 +246,6 @@ class SlaveSetup(PostgresInstall):
         self._ssh_key_exchange(master, slave)
 
         with settings(host_string=master):
-            hba_txt = 'host\treplication\treplicator\t%s/32\tmd5' %slave_ip
-            self._modify_hba_config(data_dir=data_dir, hba_txt=hba_txt)
 
             run('echo "select pg_start_backup(\'backup\', true)" | sudo su postgres -c \'psql\'')
             run('sudo su postgres -c "rsync -av --exclude postmaster.pid '
@@ -265,10 +263,6 @@ class SlaveSetup(PostgresInstall):
         if not encrypt:
             encrypt = self.encrypt
         self._setup_hba_config(data_dir, encrypt)
-        hba_txt = ("host\treplication\treplicator\t%s/32\tmd5\'\n\'"
-                   "host\treplication\treplicator\t%s/32\tmd5"
-                   %(slave_ip, master_ip))
-        self._modify_hba_config(data_dir=data_dir, hba_txt=hba_txt)
 
         sudo('svcadm enable postgresql:pg%s' %db_version)
         print('password for replicator on master node is %s' %replicator_pass)

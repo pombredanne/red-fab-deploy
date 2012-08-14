@@ -24,6 +24,9 @@ class BaseSetup(Task):
     serial = True
 
     def _update_config(self, config_section):
+        if not env.host_string:
+            print "env.host_string is None, please specify a host by -H "
+            sys.exit()
         added = False
         cons = env.config_object.get_list(config_section, env.config_object.CONNECTIONS)
         if not env.host_string in cons:
@@ -43,13 +46,6 @@ class BaseSetup(Task):
 
     def _save_config(self):
         env.config_object.save(env.conf_filename)
-
-    def _check_hosts(self):
-        if env.host_string:
-            self._update_config(self.config_section)
-        else:
-            print "env.host_string is None, please specify a host by -H "
-            sys.exit()
 
     def _secure_ssh(self):
         # Change disable root and password
@@ -115,7 +111,7 @@ class LBSetup(BaseSetup):
 
 
     def run(self, name=None):
-        self._check_hosts()
+        self._update_config()
 
         self._add_remote(name=name)
 
@@ -184,24 +180,11 @@ class DBSetup(BaseSetup):
     config_section = 'db-server'
 
     def run(self, name=None):
-        self._check_hosts()
+        self._update_config()
         self._secure_ssh()
         self._update_firewalls(self.config_section)
-        dict = execute('postgres.master_setup')
-        self._update_config_username(dict[env.host_string])
+        dict = execute('postgres.master_setup', save_config=False)
         self._save_config()
-
-    def _update_config_username(self, dict):
-        # update config info in server.ini
-        username = [dict.get('username')]
-        replicator = [dict.get('replicator', 'replicator')]
-        rep_pass = [dict.get('replicator password')]
-        env.config_object.set_list(self.config_section,
-                                   env.config_object.USERNAME, username)
-        env.config_object.set_list(self.config_section,
-                                   env.config_object.REPLICATOR, replicator)
-        env.config_object.set_list(self.config_section,
-                                   env.config_object.REPLICATOR_PASS, rep_pass)
 
 class SlaveSetup(DBSetup):
     """
@@ -235,7 +218,7 @@ class SlaveSetup(DBSetup):
 
     def run(self, name=None):
         master = self._get_master()
-        self._check_hosts()
+        self._update_config()
         self._secure_ssh()
         self._update_firewalls(self.config_section)
         execute('postgres.slave_setup', master=master)
