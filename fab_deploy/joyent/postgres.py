@@ -171,7 +171,7 @@ class SlaveSetup(PostgresInstall):
 
         return version
 
-    def _get_replicator(self, section='db-server'):
+    def _get_replicator_pass(self, section='db-server'):
         password = env.config_object.get_list(section,
                                              env.config_object.REPLICATOR_PASS)
         return password[0]
@@ -246,7 +246,7 @@ class SlaveSetup(PostgresInstall):
                                     config=self.postgres_config)
         self._setup_archive_dir(data_dir)
 
-        replicator_pass = self._get_replicator()
+        replicator_pass = self._get_replicator_pass()
         self._setup_recovery_conf(master_ip=master_ip,
                                   password=replicator_pass, data_dir=data_dir)
 
