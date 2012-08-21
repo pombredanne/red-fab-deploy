@@ -6,5 +6,4 @@ import nginx
 import postgres
 import firewall
 import manage
-import pgbouncer
 import api
