@@ -1,53 +1,71 @@
-#--- Deployment
-from fab_deploy.machine import (generate_config,
-	ec2_create_key, ec2_authorize_port,
-	print_instance,  print_image,  print_size,  print_region,
-	print_instances, print_images, print_sizes, print_regions,
-	create_instance, deploy_instances, update_instances, save_as_ami)
+import os
 
-from fab_deploy.deploy import (go, go_setup, go_deploy,
-	deploy_full, deploy_project,
-	make_src_dir, make_active, link_host, undeploy)
+from fabric.api import env
 
-from fab_deploy.virtualenv import (pip, pip_install, pip_update,
-	virtualenv_create, virtualenv)
+from config import CustomConfig
+from functions import gather_remotes
 
-#--- Linux
-from fab_deploy.crontab import (crontab_set, crontab_add, crontab_show,
-	crontab_remove, crontab_update)
+# Import all tasks
+import local
+from deploy import deploy, migrate
 
-from fab_deploy.file import link_exists, link, unlink, readlink
+GIT_REPO_NAME = 'project-git'
+GIT_WORKING_DIR = '/srv/active'
 
-from fab_deploy.package import package_install, package_update, package_upgrade, \
-	package_add_repository
+def setup_env(project_path):
+    """
+    Sets up the env settings for the fabric tasks
 
-from fab_deploy.system import (service, 
-	get_public_ip, get_internal_ip, print_hosts, set_hostname, get_hostname,
-	prepare_server, setup_backports, install_common_packages,
-	usage_disk, usage_mem, usage_cpu, usage_system,)
+    Checks your git repo and adds your remotes as
+    aliases for those hosts. Letting you do -H web1,web2
+    when you have web1 and web2 in your remotes
 
-from fab_deploy.user import (provider_as_ec2,
-	user_exists, user_create, user_setup,
-	group_exists, group_create,
-	group_user_exists, group_user_add,
-	ssh_keygen, ssh_local_keygen, ssh_get_key, ssh_authorize,
-	grant_sudo_access,)
+    Creates roles out of each section in the config file.
+    Letting you do -R app-servers and that command will
+    be passed to all app servers.
 
-from fab_deploy.utils import (update_env, set_hosts, delete_pyc, debug_env, detect_os)
+    Provides access to some variables that can be used through
+    tasks.
 
-#--- Django
-from fab_deploy.django_commands import (migrate, manage, syncdb,
-	compress, test, syn)
+        env.deploy_path: the local location of the deploy folder
+        env.project_path: the local location of the root of your project
+        env.git_repo_name: the remote name of the git repo.
+        env.git_working_dir: the remote path where the code should be deployed
 
-#--- Media
-from fab_deploy.media import (media_rsync, media_chown, media_chmod, media_sync)
+        env.config_object: The servers.ini file loaded by the config parser
+        env.conf_filename: The path to the servers.ini file
 
-#--- Servers
-from fab_deploy.server import *
+        env.git_remotes: A mapping of git remote names to hosts
+        env.git_reverse: The reverse of above
+    """
 
-#--- Databases
-from fab_deploy.db import *
+    # Setup fabric env
+    env.deploy_path = os.path.join(project_path, 'deploy')
+    env.project_path = project_path
+    env.git_repo_name = GIT_REPO_NAME
+    env.git_working_dir = GIT_WORKING_DIR
 
-#--- Version Control
-from fab_deploy.vcs import *
+    BASE = os.path.abspath(os.path.dirname(__file__))
+    env.configs_dir = os.path.join(BASE, 'default-configs')
 
+    # Read the config and store it in env
+    config = CustomConfig()
+    env.conf_filename = os.path.abspath(os.path.join(project_path, 'deploy', 'servers.ini'))
+    config.read([ env.conf_filename ])
+    env.config_object = config
+
+    # Add sections to the roledefs
+    for section in config.sections():
+        if config.has_option(section, CustomConfig.CONNECTIONS):
+            env.roledefs[section] = config.get_list(section, CustomConfig.CONNECTIONS)
+
+    env.git_remotes = gather_remotes()
+    env.git_reverse = dict([(v, k) for (k, v) in env.git_remotes.iteritems()])
+
+    # Translate any known git names to hosts
+    hosts = []
+    for host in env.hosts:
+        if host in env.git_remotes:
+            host = env.git_remotes[host]
+        hosts.append(host)
+    env.hosts = hosts
